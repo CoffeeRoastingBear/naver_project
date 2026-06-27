@@ -1,0 +1,20 @@
+# Local secrets
+config.json
+
+# Runtime data
+data/
+*.t1
+
+# Build outputs
+build/
+dist/
+*.spec
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+

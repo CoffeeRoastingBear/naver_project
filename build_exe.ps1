@@ -1,0 +1,33 @@
+$ErrorActionPreference = "Stop"
+
+$distDir = Join-Path $PSScriptRoot "dist"
+$buildDir = Join-Path $PSScriptRoot "build"
+$packageDir = Join-Path $distDir "dashboard_tool"
+$zipPath = Join-Path $distDir "dashboard_tool.zip"
+
+if (Test-Path $packageDir) {
+    Remove-Item -LiteralPath $packageDir -Recurse -Force
+}
+if (Test-Path $zipPath) {
+    Remove-Item -LiteralPath $zipPath -Force
+}
+
+py -m PyInstaller `
+    --noconfirm `
+    --onefile `
+    --name dashboard `
+    --add-data "dashboard.html;." `
+    --add-data "dashboard.css;." `
+    --add-data "dashboard.js;." `
+    dashboard_app.py
+
+New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "data") | Out-Null
+
+Copy-Item -LiteralPath (Join-Path $distDir "dashboard.exe") -Destination (Join-Path $packageDir "dashboard.exe") -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join-Path $packageDir "README.txt") -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "config_sample.json") -Destination (Join-Path $packageDir "config_sample.json") -Force
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory($packageDir, $zipPath)
+Write-Host "Created: $zipPath"

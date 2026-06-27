@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>네이버 가격 트래킹 대시보드</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">N</div>
+            <div>
+                <h1>가격 트래커</h1>
+                <p>네이버 쇼핑 API 로컬 대시보드</p>
+            </div>
+        </div>
+
+        <section class="panel">
+            <div class="panel-title">API Key</div>
+            <div id="apiStatus" class="status muted">확인 중</div>
+            <button class="secondary" id="openConfigBtn">API Key 설정</button>
+        </section>
+
+        <section class="panel">
+            <div class="panel-title">카테고리</div>
+            <div id="categoryList" class="category-list"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-title">키워드</div>
+            <div id="keywordList" class="keyword-list"></div>
+            <div class="input-row">
+                <input id="newKeywordInput" type="text" placeholder="추가 키워드">
+                <button id="addKeywordBtn">추가</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-title">조회 옵션</div>
+            <label class="field-label" for="topNSelect">수집 개수</label>
+            <select id="topNSelect">
+                <option value="100">Top 100</option>
+                <option value="300">Top 300</option>
+            </select>
+            <button class="primary" id="collectBtn">선택 키워드 조회</button>
+            <div id="lastRun" class="small-text">마지막 조회: -</div>
+        </section>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <div>
+                <h2 id="pageTitle">가격 비교</h2>
+                <p id="pageSubtitle">카테고리를 선택하고 조회 버튼을 누르세요.</p>
+            </div>
+            <div id="message" class="message"></div>
+        </header>
+
+        <section class="summary-grid">
+            <div class="metric">
+                <span>키워드 수</span>
+                <strong id="metricKeywords">0</strong>
+            </div>
+            <div class="metric">
+                <span>평균 최저가</span>
+                <strong id="metricMinAvg">-</strong>
+            </div>
+            <div class="metric">
+                <span>평균 판매가</span>
+                <strong id="metricAvg">-</strong>
+            </div>
+            <div class="metric">
+                <span>캐시/쿨타임</span>
+                <strong id="metricCooldown">30분</strong>
+            </div>
+        </section>
+
+        <section class="content-card">
+            <div class="section-header">
+                <h3>최신 가격 비교</h3>
+                <span>키워드별 최신 .t1 파일 기준</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>키워드</th>
+                            <th>최근 시각</th>
+                            <th>평균가</th>
+                            <th>최저가</th>
+                            <th>최고가</th>
+                            <th>결과 수</th>
+                            <th>전회 대비</th>
+                        </tr>
+                    </thead>
+                    <tbody id="latestTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-card split">
+            <div>
+                <div class="section-header">
+                    <h3>키워드 상세</h3>
+                    <span id="selectedKeywordLabel">선택된 키워드 없음</span>
+                </div>
+                <div class="chart-box">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+            <div>
+                <div class="section-header">
+                    <h3>Top 결과</h3>
+                    <span>최신 스냅샷 상위 20개</span>
+                </div>
+                <div id="topItems" class="item-list"></div>
+            </div>
+        </section>
+    </main>
+
+    <dialog id="configDialog">
+        <form method="dialog" class="dialog-card">
+            <h3>네이버 API Key 설정</h3>
+            <p>키는 사용자 PC의 `config.json`에만 저장됩니다. 간단한 난독화를 적용하지만 보안 저장소 수준의 암호화는 아닙니다.</p>
+            <label>
+                Client ID
+                <input id="clientIdInput" type="text" autocomplete="off">
+            </label>
+            <label>
+                Client Secret
+                <input id="clientSecretInput" type="password" autocomplete="off">
+            </label>
+            <label>
+                기본 수집 개수
+                <select id="configTopN">
+                    <option value="100">Top 100</option>
+                    <option value="300">Top 300</option>
+                </select>
+            </label>
+            <label>
+                쿨타임(분)
+                <input id="cooldownInput" type="number" min="1" max="1440" value="30">
+            </label>
+            <div class="dialog-actions">
+                <button value="cancel" class="secondary">취소</button>
+                <button id="saveConfigBtn" value="default" class="primary">저장</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
