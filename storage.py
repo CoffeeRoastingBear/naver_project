@@ -154,7 +154,7 @@ def save_keyword_master(df):
             df[column] = ""
     export_df = df[MASTER_COLUMNS].rename(columns=MASTER_EXPORT_COLUMNS)
     csv_text = export_df.to_csv(index=False)
-    with KEYWORD_MASTER_PATH.open("w", encoding="utf-8-sig", newline="") as file:
+    with KEYWORD_MASTER_PATH.open("w", encoding="cp949", newline="") as file:
         file.write("sep=,\n")
         file.write(csv_text)
 

@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $distDir = Join-Path $PSScriptRoot "dist"
 $buildDir = Join-Path $PSScriptRoot "build"
-$packageDir = Join-Path $distDir "dashboard_tool"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$packageDir = Join-Path $distDir "dashboard_tool_v2_$timestamp"
 $zipPath = Join-Path $distDir "dashboard_tool_v2_$timestamp.zip"
 
 if (Test-Path $packageDir) {
