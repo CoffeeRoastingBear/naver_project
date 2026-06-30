@@ -3,15 +3,12 @@ $ErrorActionPreference = "Stop"
 $distDir = Join-Path $PSScriptRoot "dist"
 $buildDir = Join-Path $PSScriptRoot "build"
 $packageDir = Join-Path $distDir "dashboard_tool"
-$zipPath = Join-Path $distDir "dashboard_tool.zip"
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$zipPath = Join-Path $distDir "dashboard_tool_v2_$timestamp.zip"
 
 if (Test-Path $packageDir) {
     Remove-Item -LiteralPath $packageDir -Recurse -Force
 }
-if (Test-Path $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
-}
-
 py -m PyInstaller `
     --noconfirm `
     --onefile `
@@ -27,6 +24,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "data") | Out-N
 Copy-Item -LiteralPath (Join-Path $distDir "dashboard.exe") -Destination (Join-Path $packageDir "dashboard.exe") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join-Path $packageDir "README.txt") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "config_sample.json") -Destination (Join-Path $packageDir "config_sample.json") -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "keyword_master.t1") -Destination (Join-Path $packageDir "keyword_master.t1") -Force
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($packageDir, $zipPath)

@@ -27,17 +27,21 @@ def decode_secret(value):
         return ""
 
 
-def load_config():
+def _read_raw():
     if not CONFIG_PATH.exists():
         return {}
     with CONFIG_PATH.open("r", encoding="utf-8") as file:
-        data = json.load(file)
+        return json.load(file)
 
+
+def load_config():
+    data = _read_raw()
     return {
         "client_id": decode_secret(data.get("client_id", "")),
         "client_secret": decode_secret(data.get("client_secret", "")),
         "top_n": int(data.get("top_n", 100)),
         "cooldown_minutes": int(data.get("cooldown_minutes", 30)),
+        "category_cooldowns": data.get("category_cooldowns", {}) or {},
     }
 
 
@@ -47,16 +51,41 @@ def public_config():
         "has_api_key": bool(config.get("client_id") and config.get("client_secret")),
         "top_n": config.get("top_n", 100),
         "cooldown_minutes": config.get("cooldown_minutes", 30),
+        "category_cooldowns": config.get("category_cooldowns", {}),
     }
 
 
-def save_config(client_id, client_secret, top_n=100, cooldown_minutes=30):
+def save_config(client_id, client_secret, top_n=100, cooldown_minutes=30, category_cooldowns=None):
+    existing = load_config()
+    client_id = client_id.strip() or existing.get("client_id", "")
+    client_secret = client_secret.strip() or existing.get("client_secret", "")
+    cooldown_minutes = max(5, min(60, int(cooldown_minutes)))
+
     payload = {
-        "client_id": encode_secret(client_id.strip()),
-        "client_secret": encode_secret(client_secret.strip()),
+        "client_id": encode_secret(client_id),
+        "client_secret": encode_secret(client_secret),
         "top_n": int(top_n),
-        "cooldown_minutes": int(cooldown_minutes),
+        "cooldown_minutes": cooldown_minutes,
+        "category_cooldowns": category_cooldowns if category_cooldowns is not None else existing.get("category_cooldowns", {}),
     }
     with CONFIG_PATH.open("w", encoding="utf-8") as file:
         json.dump(payload, file, ensure_ascii=False, indent=2)
 
+
+def set_category_cooldown(category, minutes):
+    config = load_config()
+    category_cooldowns = config.get("category_cooldowns", {})
+    category_cooldowns[category] = max(5, min(60, int(minutes)))
+    save_config(
+        config.get("client_id", ""),
+        config.get("client_secret", ""),
+        config.get("top_n", 100),
+        config.get("cooldown_minutes", 30),
+        category_cooldowns,
+    )
+
+
+def cooldown_for_category(category):
+    config = load_config()
+    value = config.get("category_cooldowns", {}).get(category)
+    return max(5, min(60, int(value or config.get("cooldown_minutes", 30))))

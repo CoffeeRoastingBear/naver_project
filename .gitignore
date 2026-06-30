@@ -4,6 +4,7 @@ config.json
 # Runtime data
 data/
 *.t1
+!keyword_master.t1
 
 # Build outputs
 build/
@@ -17,4 +18,3 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
-

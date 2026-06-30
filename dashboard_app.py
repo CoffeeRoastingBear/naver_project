@@ -8,21 +8,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from config_manager import load_config, public_config, save_config
+from config_manager import cooldown_for_category, load_config, public_config, save_config, set_category_cooldown
 from naver_api import fetch_shop_results
 from storage import (
     add_keyword,
     categories_payload,
+    delete_keyword,
+    empty_mapping_summary,
     ensure_dirs,
     ensure_keyword_master,
-    keyword_trend,
+    generate_test_data,
+    get_mapping,
+    item_price_trend,
     latest_file,
     latest_summary_for_keyword,
     parse_file_time,
     previous_summary_for_keyword,
     read_keyword_master,
-    read_snapshot,
-    write_snapshot,
+    write_mapping_snapshot,
 )
 
 
@@ -57,38 +60,83 @@ def read_json_body(handler):
     return json.loads(handler.rfile.read(length).decode("utf-8"))
 
 
-def collect_keyword(category, keyword, top_n=None):
+def collect_keyword(category, keyword, top_n=None, product_type="all"):
     config = load_config()
     if not config.get("client_id") or not config.get("client_secret"):
         raise RuntimeError("네이버 API Key를 먼저 저장해주세요.")
 
+    mapping = get_mapping(category, keyword)
+    if not mapping:
+        raise RuntimeError("등록된 SKU 매핑을 찾을 수 없습니다.")
+
     top_n = int(top_n or config.get("top_n") or 100)
-    cooldown_minutes = int(config.get("cooldown_minutes") or 30)
+    cooldown_minutes = cooldown_for_category(category)
     current_latest = latest_file(category, keyword)
     now = datetime.now()
 
     if current_latest:
         latest_dt = parse_file_time(current_latest)
         if now - latest_dt < timedelta(minutes=cooldown_minutes):
-            df = read_snapshot(current_latest)
-            summary = latest_summary_for_keyword(category, keyword)
+            summary = latest_summary_for_keyword(category, keyword, product_type, mapping)
             summary["source"] = "cache"
             summary["cooldown_until"] = (latest_dt + timedelta(minutes=cooldown_minutes)).strftime("%Y-%m-%d %H:%M:%S")
             return summary
 
-    items, total = fetch_shop_results(
-        config["client_id"],
-        config["client_secret"],
-        keyword,
-        limit=top_n,
+    own_items, own_total = fetch_shop_results(config["client_id"], config["client_secret"], mapping["own_sku"], limit=top_n)
+    competitor_items, competitor_total = fetch_shop_results(
+        config["client_id"], config["client_secret"], mapping["competitor_sku"], limit=top_n
     )
-    file_path, df = write_snapshot(category, keyword, items, total, now)
-    summary = latest_summary_for_keyword(category, keyword)
-    previous = previous_summary_for_keyword(category, keyword, file_path)
+    file_path, _ = write_mapping_snapshot(category, keyword, own_items, competitor_items, own_total, competitor_total, mapping, now)
+    summary = latest_summary_for_keyword(category, keyword, product_type, mapping)
+    previous = previous_summary_for_keyword(category, keyword, file_path, product_type)
     summary["source"] = "api"
-    summary["previous_avg_price"] = previous["avg_price"] if previous else None
-    summary["avg_change"] = summary["avg_price"] - previous["avg_price"] if previous else None
+    attach_previous(summary, previous)
     return summary
+
+
+def attach_previous(summary, previous):
+    summary["previous_own_avg_price"] = previous["own"]["avg_price"] if previous else None
+    summary["own_avg_change"] = summary["own"]["avg_price"] - previous["own"]["avg_price"] if previous else None
+    summary["previous_competitor_avg_price"] = previous["competitor"]["avg_price"] if previous else None
+    summary["competitor_avg_change"] = (
+        summary["competitor"]["avg_price"] - previous["competitor"]["avg_price"] if previous else None
+    )
+
+
+def latest_category_rows(category, product_type="all"):
+    df = read_keyword_master()
+    if category:
+        df = df[df["category"] == category]
+    df = df[df["competitor_sku"].astype(str).str.strip() != ""]
+
+    rows = []
+    for _, row in df.iterrows():
+        mapping = row.to_dict()
+        summary = latest_summary_for_keyword(row["category"], row["keyword"], product_type, mapping)
+        if not summary:
+            summary = empty_mapping_summary(row["category"], mapping)
+
+        current_file = latest_file(row["category"], row["keyword"])
+        previous = previous_summary_for_keyword(row["category"], row["keyword"], current_file, product_type) if current_file else None
+        summary["is_default"] = row.get("is_default", "")
+        attach_previous(summary, previous)
+        rows.append(summary)
+    return rows
+
+
+def latest_rows_for_keywords(category, keywords, product_type="all"):
+    rows = []
+    for keyword in keywords:
+        mapping = get_mapping(category, keyword) or {"keyword": keyword, "own_sku": keyword, "competitor_sku": "", "base_price": 0}
+        summary = latest_summary_for_keyword(category, keyword, product_type, mapping)
+        if not summary:
+            summary = empty_mapping_summary(category, mapping)
+        current_file = latest_file(category, keyword)
+        previous = previous_summary_for_keyword(category, keyword, current_file, product_type) if current_file else None
+        summary["is_default"] = mapping.get("is_default", "Y")
+        attach_previous(summary, previous)
+        rows.append(summary)
+    return rows
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -107,11 +155,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return json_response(self, {"ok": True, "categories": categories_payload()})
             if path == "/api/latest":
                 category = query.get("category", [""])[0]
-                return json_response(self, {"ok": True, "rows": latest_category_rows(category)})
+                product_type = query.get("product_type", ["all"])[0]
+                return json_response(self, {"ok": True, "rows": latest_category_rows(category, product_type)})
             if path == "/api/trend":
                 category = query.get("category", [""])[0]
                 keyword = query.get("keyword", [""])[0]
-                return json_response(self, {"ok": True, "trend": keyword_trend(category, keyword)})
+                product_type = query.get("product_type", ["all"])[0]
+                mapping = get_mapping(category, keyword)
+                return json_response(self, {"ok": True, "mapping": mapping, "trend": item_price_trend(category, keyword, product_type)})
             return self.serve_static(path)
         except Exception as exc:
             return error_response(self, str(exc), status=500)
@@ -128,26 +179,54 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     body.get("client_secret", ""),
                     body.get("top_n", 100),
                     body.get("cooldown_minutes", 30),
+                    body.get("category_cooldowns"),
                 )
                 return json_response(self, {"ok": True, "config": public_config()})
 
+            if path == "/api/category_cooldown":
+                set_category_cooldown(body.get("category", ""), body.get("minutes", 30))
+                return json_response(self, {"ok": True, "config": public_config()})
+
+            if path == "/api/test_data":
+                result = generate_test_data()
+                return json_response(
+                    self,
+                    {
+                        "ok": True,
+                        "result": result,
+                        "categories": categories_payload(),
+                        "rows": latest_rows_for_keywords(result["category"], result["keywords"], body.get("product_type") or "all"),
+                    },
+                )
+
             if path == "/api/keyword":
-                add_keyword(body.get("category", ""), body.get("keyword", ""), "N")
+                add_keyword(
+                    body.get("category", ""),
+                    is_default="N",
+                    own_sku=body.get("own_sku", ""),
+                    competitor_sku=body.get("competitor_sku", ""),
+                    base_price=body.get("base_price", 0),
+                )
+                return json_response(self, {"ok": True, "categories": categories_payload()})
+
+            if path == "/api/delete_keyword":
+                delete_keyword(body.get("category", ""), body.get("keyword", ""))
                 return json_response(self, {"ok": True, "categories": categories_payload()})
 
             if path == "/api/collect":
                 category = body.get("category", "").strip()
                 keywords = body.get("keywords") or []
                 top_n = int(body.get("top_n") or 100)
+                product_type = body.get("product_type") or "all"
                 if not category or not keywords:
-                    return error_response(self, "카테고리와 키워드를 선택해주세요.")
+                    return error_response(self, "카테고리와 SKU 매핑을 선택해주세요.")
                 if len(keywords) > 10:
-                    return error_response(self, "한 번에 최대 10개 키워드까지만 조회할 수 있습니다.")
+                    return error_response(self, "한 번에 최대 10개 모델 매핑까지만 조회할 수 있습니다.")
 
-                results = [collect_keyword(category, keyword, top_n) for keyword in keywords]
-                return json_response(self, {"ok": True, "results": results, "rows": latest_category_rows(category)})
+                results = [collect_keyword(category, keyword, top_n, product_type) for keyword in keywords]
+                return json_response(self, {"ok": True, "results": results, "rows": latest_category_rows(category, product_type)})
 
-            return error_response(self, "알 수 없는 API 경로입니다.", status=404)
+            return error_response(self, "없는 API 경로입니다.", status=404)
         except Exception as exc:
             return error_response(self, str(exc), status=500)
 
@@ -165,35 +244,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-
-
-def latest_category_rows(category):
-    df = read_keyword_master()
-    if category:
-        df = df[df["category"] == category]
-
-    rows = []
-    for _, row in df.iterrows():
-        summary = latest_summary_for_keyword(row["category"], row["keyword"])
-        if not summary:
-            summary = {
-                "category": row["category"],
-                "keyword": row["keyword"],
-                "snapshot_time": "",
-                "avg_price": 0,
-                "min_price": 0,
-                "max_price": 0,
-                "count": 0,
-                "search_total": 0,
-                "items": [],
-            }
-        current_file = latest_file(row["category"], row["keyword"])
-        previous = previous_summary_for_keyword(row["category"], row["keyword"], current_file) if current_file else None
-        summary["is_default"] = row.get("is_default", "")
-        summary["previous_avg_price"] = previous["avg_price"] if previous else None
-        summary["avg_change"] = summary["avg_price"] - previous["avg_price"] if previous else None
-        rows.append(summary)
-    return rows
 
 
 def run():
