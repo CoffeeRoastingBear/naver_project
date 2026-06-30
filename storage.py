@@ -107,10 +107,22 @@ def ensure_keyword_master():
 
 def read_keyword_master():
     ensure_keyword_master()
+    skiprows = 0
     try:
-        df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="utf-8-sig", sep=None, engine="python").fillna("")
+        with KEYWORD_MASTER_PATH.open("r", encoding="utf-8-sig") as file:
+            first_line = file.readline().strip().lower()
+            if first_line.startswith("sep="):
+                skiprows = 1
     except UnicodeDecodeError:
-        df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="cp949", sep=None, engine="python").fillna("")
+        with KEYWORD_MASTER_PATH.open("r", encoding="cp949") as file:
+            first_line = file.readline().strip().lower()
+            if first_line.startswith("sep="):
+                skiprows = 1
+
+    try:
+        df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="utf-8-sig", sep=None, engine="python", skiprows=skiprows).fillna("")
+    except UnicodeDecodeError:
+        df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="cp949", sep=None, engine="python", skiprows=skiprows).fillna("")
     df = df.rename(columns=MASTER_IMPORT_COLUMNS)
 
     for column in LEGACY_COLUMNS:
@@ -141,7 +153,10 @@ def save_keyword_master(df):
         if column not in df.columns:
             df[column] = ""
     export_df = df[MASTER_COLUMNS].rename(columns=MASTER_EXPORT_COLUMNS)
-    export_df.to_csv(KEYWORD_MASTER_PATH, index=False, encoding="utf-8-sig", sep="\t")
+    csv_text = export_df.to_csv(index=False)
+    with KEYWORD_MASTER_PATH.open("w", encoding="utf-8-sig", newline="") as file:
+        file.write("sep=,\n")
+        file.write(csv_text)
 
 
 def add_keyword(category, keyword=None, is_default="N", own_sku=None, competitor_sku=None, base_price=0):
