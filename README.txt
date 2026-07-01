@@ -47,17 +47,20 @@ dashboard_tool.zip
 - 운영 스케줄링은 적용하지 않습니다.
 - 테스트 메일은 수동 실행만 지원합니다.
 - 메일 발송 스크립트는 네이버 API를 호출하지 않습니다.
+- 메일 발송 스크립트는 get_latest_report()로 최신 HTML 리포트만 조회해 첨부합니다.
 
 로컬 테스트:
   set GMAIL_ID=your_gmail@gmail.com
   set GMAIL_APP_PASSWORD=your_app_password
+  python create_test_report.py
   python test_mail.py
 
 GitHub Actions 테스트:
   1. GitHub Repository Secret에 GMAIL_ID, GMAIL_APP_PASSWORD가 등록되어 있는지 확인합니다.
   2. GitHub Actions 메뉴에서 "Test Mail" workflow를 선택합니다.
   3. Run workflow 버튼으로 수동 실행합니다.
-  4. seongjin.son@samsung.com 메일 수신 여부를 확인합니다.
+  4. workflow가 샘플 HTML 리포트를 생성한 뒤 테스트 메일에 첨부합니다.
+  5. seongjin.son@samsung.com 메일 수신 여부와 HTML 첨부파일을 확인합니다.
 
 테스트 메일 제목:
   [TEST] 가격 트래킹 메일 자동화 테스트

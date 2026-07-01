@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Create static test report
+        run: python create_test_report.py
+
       - name: Send test mail
         env:
           GMAIL_ID: ${{ secrets.GMAIL_ID }}
