@@ -15,7 +15,7 @@ SMTP_PORT = 465
 SENDER_ENV = "GMAIL_ID"
 PASSWORD_ENV = "GMAIL_APP_PASSWORD"
 RECIPIENT = "seongjin.son@samsung.com"
-SUBJECT = "[TEST] 가격 트래킹 메일 자동화 테스트"
+SUBJECT = "[TEST] TV 가격 트래킹 리포트"
 
 
 def current_environment():
@@ -27,9 +27,9 @@ def build_html_body(sent_at, environment, report_path):
     return f"""<!DOCTYPE html>
 <html lang="ko">
 <body>
-  <h2>메일 자동화 테스트</h2>
-  <p>GitHub Actions 기반 메일 발송 테스트입니다.</p>
-  <p>최신 HTML 가격 리포트를 첨부했습니다.</p>
+  <h2>TV 가격 비교 리포트</h2>
+  <p>오전 10시 기준 운영 발송 구조를 검증하기 위한 테스트 메일입니다.</p>
+  <p>네이버 API 조회 결과로 생성된 정적 HTML 리포트를 첨부했습니다.</p>
   <ul>
     <li>발송 시간 : {sent_at}</li>
     <li>발송 환경 : {environment}</li>

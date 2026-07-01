@@ -38,6 +38,17 @@ def _price_link(item):
     return f"<div><strong>{price}</strong> <span>{rate}</span><br><span>URL 없음</span></div>"
 
 
+def _max_discount(rows):
+    values = []
+    for row in rows or []:
+        for item in row.get("low_items") or []:
+            try:
+                values.append(float(item.get("discount_rate")))
+            except (TypeError, ValueError):
+                pass
+    return min(values) if values else None
+
+
 def get_latest_report():
     """Return the newest generated HTML report path, or None.
 
@@ -56,6 +67,8 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
     generated_at = generated_at or datetime.now()
     summary_lines = (summary_lines or [])[:3]
     file_path = REPORTS_DIR / f"price_report_{generated_at.strftime('%Y%m%d_%H%M%S')}.html"
+    total_low_count = sum(int(row.get("low_count") or 0) for row in rows or [])
+    max_discount = _max_discount(rows)
 
     row_html = []
     for row in rows or []:
@@ -67,7 +80,7 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
             top_items.append(
                 "<li>"
                 f"{title_html}<br>"
-                f"<small>{_esc(item.get('side') or '')} · {_esc(item.get('mall_name') or '-')} · "
+                f"<small>{'경쟁사' if item.get('side') == 'competitor' else '당사'} · {_esc(item.get('mall_name') or '-')} · "
                 f"{_fmt_price(item.get('lprice') or item.get('price'))} · {_fmt_rate(item.get('discount_rate'))}</small>"
                 "</li>"
             )
@@ -94,12 +107,21 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
   <meta charset="utf-8">
   <title>TV 가격 비교 AI 요약 리포트</title>
   <style>
-    body {{ font-family: Arial, 'Malgun Gothic', sans-serif; margin: 24px; color: #17202a; }}
-    h1 {{ font-size: 22px; margin: 0 0 8px; }}
-    .meta {{ color: #667085; margin-bottom: 20px; }}
-    .summary {{ background: #f4f7fb; border: 1px solid #dce4ef; padding: 14px 18px; margin-bottom: 20px; }}
+    body {{ font-family: Arial, 'Malgun Gothic', sans-serif; margin: 0; background: #f3f6fa; color: #17202a; }}
+    .wrap {{ max-width: 1180px; margin: 0 auto; padding: 24px; }}
+    .hero {{ background: #102033; color: #ffffff; padding: 22px 24px; border-radius: 8px; }}
+    h1 {{ font-size: 24px; margin: 0 0 8px; }}
+    .meta {{ color: #c8d3e0; margin-bottom: 14px; }}
+    .summary ol {{ margin: 0; padding-left: 22px; }}
+    .summary li {{ margin-bottom: 6px; }}
+    .metrics {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 18px; }}
+    .metric {{ background: #ffffff; border: 1px solid #d9e0e8; border-radius: 8px; padding: 14px; }}
+    .metric span {{ display: block; color: #667085; font-size: 12px; margin-bottom: 6px; }}
+    .metric strong {{ font-size: 20px; }}
+    .card {{ background: #ffffff; border: 1px solid #d9e0e8; border-radius: 8px; overflow: hidden; }}
+    .card-title {{ padding: 14px 16px; border-bottom: 1px solid #d9e0e8; font-weight: 700; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
-    th, td {{ border: 1px solid #d9e0e8; padding: 10px; vertical-align: top; }}
+    th, td {{ border-bottom: 1px solid #d9e0e8; padding: 12px; vertical-align: top; }}
     th {{ background: #eef3f8; text-align: left; }}
     a {{ color: #175cd3; word-break: break-all; }}
     ol {{ margin: 0; padding-left: 20px; }}
@@ -109,23 +131,33 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
   </style>
 </head>
 <body>
-  <h1>TV 가격 비교 * AI 요약</h1>
-  <div class="meta">생성일시: {_esc(generated_at.strftime('%Y-%m-%d %H:%M:%S'))}</div>
-  <section class="summary">
-    <ol>{summary_html}</ol>
-  </section>
-  <table>
-    <thead>
-      <tr>
-        <th>모델</th>
-        <th>기준가</th>
-        <th>최저가 게시물</th>
-        <th>저가 게시물 수</th>
-        <th>TOP20 게시물</th>
-      </tr>
-    </thead>
-    <tbody>{table_body}</tbody>
-  </table>
+  <div class="wrap">
+    <section class="hero">
+      <h1>TV 가격 비교 * AI 요약</h1>
+      <div class="meta">기준가 대비 10% 이상 낮은 게시물 기준 · 생성일시: {_esc(generated_at.strftime('%Y-%m-%d %H:%M:%S'))}</div>
+      <div class="summary"><ol>{summary_html}</ol></div>
+    </section>
+    <section class="metrics">
+      <div class="metric"><span>표시 모델</span><strong>{len(rows or [])}</strong></div>
+      <div class="metric"><span>저가 게시물 수</span><strong>{total_low_count:,}건</strong></div>
+      <div class="metric"><span>최대 할인율</span><strong>{_fmt_rate(max_discount)}</strong></div>
+    </section>
+    <section class="card">
+      <div class="card-title">최신 가격 비교</div>
+      <table>
+        <thead>
+          <tr>
+            <th>모델</th>
+            <th>기준가</th>
+            <th>최저가 게시물</th>
+            <th>저가 게시물 수</th>
+            <th>TOP20 게시물</th>
+          </tr>
+        </thead>
+        <tbody>{table_body}</tbody>
+      </table>
+    </section>
+  </div>
 </body>
 </html>
 """

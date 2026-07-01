@@ -16,8 +16,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Create static test report
-        run: python create_test_report.py
+      - name: Create TV price report
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+        run: python create_tv_report.py
 
       - name: Send test mail
         env:
