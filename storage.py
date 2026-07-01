@@ -12,6 +12,7 @@ from naver_api import make_item_id, strip_html
 DATA_DIR = Path("data")
 KEYWORD_MASTER_PATH = Path("keyword_master.t1")
 LOW_DISCOUNT_RATE = -10.0
+MIN_VALID_PRICE_RATIO = 0.10
 
 MASTER_COLUMNS = ["category", "keyword", "own_sku", "competitor_sku", "base_price", "is_default", "created_at"]
 LEGACY_COLUMNS = ["category", "keyword", "is_default", "created_at"]
@@ -289,6 +290,7 @@ def write_snapshot(category, keyword, items, total, snapshot_time=None, side="ow
                 "hprice": int(item.get("hprice") or 0),
                 "price": lprice,
                 "link": item.get("link", ""),
+                "image": item.get("image", ""),
                 "brand": item.get("brand", ""),
                 "maker": item.get("maker", ""),
                 "search_total": int(total or 0),
@@ -371,7 +373,11 @@ def low_price_items(df, base_price, side=None):
         df = df[df["side"].astype(str) == side]
     if df.empty:
         return df
-    return df[df["discount_rate"].apply(lambda value: value is not None and value <= LOW_DISCOUNT_RATE)]
+    min_valid_price = float(base_price or 0) * MIN_VALID_PRICE_RATIO
+    return df[
+        (df["lprice"] >= min_valid_price)
+        & df["discount_rate"].apply(lambda value: value is not None and value <= LOW_DISCOUNT_RATE)
+    ]
 
 
 def item_record(row):

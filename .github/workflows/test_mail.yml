@@ -17,13 +17,19 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        run: python -m pip install pandas
+        run: python -m pip install pandas playwright
+
+      - name: Install browser for report capture
+        run: python -m playwright install --with-deps chromium
 
       - name: Create TV price report
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: python create_tv_report.py
+
+      - name: Capture report image
+        run: python render_report_image.py
 
       - name: Send test mail
         env:

@@ -3,11 +3,12 @@ import smtplib
 import ssl
 from datetime import datetime
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-from report_generator import get_latest_report
+from report_generator import get_latest_report, get_latest_report_meta
 
 
 SMTP_HOST = "smtp.gmail.com"
@@ -22,23 +23,59 @@ def current_environment():
     return "GitHub Actions" if os.getenv("GITHUB_ACTIONS") == "true" else "Local"
 
 
-def build_html_body(sent_at, environment, report_path):
+def _summary_html(summary_lines):
+    lines = summary_lines or ["AI 요약 정보가 없습니다."]
+    return "".join(f"<li>{line}</li>" for line in lines[:3])
+
+
+def build_html_body(sent_at, environment, report_path, summary_lines=None):
     report_name = Path(report_path).name if report_path else "-"
     return f"""<!DOCTYPE html>
 <html lang="ko">
 <body>
-  <h2>TV 가격 비교 리포트</h2>
-  <p>오전 10시 기준 운영 발송 구조를 검증하기 위한 테스트 메일입니다.</p>
-  <p>네이버 API 조회 결과로 생성된 정적 HTML 리포트를 첨부했습니다.</p>
-  <ul>
-    <li>발송 시간 : {sent_at}</li>
-    <li>발송 환경 : {environment}</li>
-    <li>첨부 리포트 : {report_name}</li>
-    <li>상태 : SUCCESS</li>
-  </ul>
+  <div style="font-family:Arial,'Malgun Gothic',sans-serif;color:#17202a;max-width:720px;">
+    <div style="border:1px solid #d9e0e8;border-radius:10px;overflow:hidden;">
+      <div style="background:#142235;color:#ffffff;padding:18px 20px;">
+        <h2 style="margin:0;font-size:22px;">&lt;&lt; AI 요약 &gt;&gt;</h2>
+        <p style="margin:8px 0 0;color:#c8d3e0;font-size:13px;">오전 10시 기준 운영 발송 구조 테스트</p>
+      </div>
+      <div style="padding:18px 20px;background:#ffffff;">
+        <ol style="margin:0 0 16px 20px;padding:0;line-height:1.7;">
+          {_summary_html(summary_lines)}
+        </ol>
+        <table style="border-collapse:collapse;width:100%;font-size:13px;">
+          <tr>
+            <td style="border-top:1px solid #edf1f5;padding:8px;color:#667085;width:120px;">발송 시간</td>
+            <td style="border-top:1px solid #edf1f5;padding:8px;">{sent_at}</td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid #edf1f5;padding:8px;color:#667085;">발송 환경</td>
+            <td style="border-top:1px solid #edf1f5;padding:8px;">{environment}</td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid #edf1f5;padding:8px;color:#667085;">첨부 리포트</td>
+            <td style="border-top:1px solid #edf1f5;padding:8px;">{report_name}</td>
+          </tr>
+        </table>
+        <p style="margin:16px 0 0;color:#667085;font-size:12px;">정적 HTML 리포트와 캡처 이미지를 함께 첨부했습니다.</p>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 """
+
+
+def _attach_file(message, path):
+    file_path = Path(path)
+    if not file_path.exists():
+        return
+    if file_path.suffix.lower() == ".png":
+        attachment = MIMEImage(file_path.read_bytes(), _subtype="png")
+    else:
+        attachment = MIMEApplication(file_path.read_bytes(), _subtype=file_path.suffix.lstrip(".") or "octet-stream")
+    attachment.add_header("Content-Disposition", "attachment", filename=file_path.name)
+    message.attach(attachment)
 
 
 def build_message(sender, recipient, subject, html_body, report_path):
@@ -51,10 +88,8 @@ def build_message(sender, recipient, subject, html_body, report_path):
     body_part.attach(MIMEText(html_body, "html", "utf-8"))
     message.attach(body_part)
 
-    report_file = Path(report_path)
-    attachment = MIMEApplication(report_file.read_bytes(), _subtype="html")
-    attachment.add_header("Content-Disposition", "attachment", filename=report_file.name)
-    message.attach(attachment)
+    _attach_file(message, report_path)
+    _attach_file(message, Path(report_path).with_suffix(".png"))
     return message
 
 
@@ -71,7 +106,8 @@ def send_test_mail():
 
     sent_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     environment = current_environment()
-    html_body = build_html_body(sent_at, environment, report_path)
+    meta = get_latest_report_meta()
+    html_body = build_html_body(sent_at, environment, report_path, meta.get("summary"))
     message = build_message(sender, RECIPIENT, SUBJECT, html_body, report_path)
 
     context = ssl.create_default_context()
