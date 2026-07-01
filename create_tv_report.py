@@ -76,7 +76,7 @@ def tv_default_mappings():
         & (df["base_price"].astype(int) > 0)
     ].copy()
     if df.empty:
-        raise RuntimeError("TV 기본 모델 7개를 찾을 수 없습니다. keyword_master.t1을 확인해주세요.")
+        raise RuntimeError("TV 기본 모델 7개를 찾을 수 없습니다. keyword_master.xlsx를 확인해주세요.")
     return [row.to_dict() for _, row in df.iterrows()]
 
 
@@ -162,7 +162,7 @@ def create_tv_report():
     )
     print(f"Created TV report: {report_path}")
     print(f"Created XLSX data: {data_path}")
-    print(f"Dashboard rows: {len(rows)}")
+    print(f"Report rows: {len(rows)}")
     return report_path
 
 

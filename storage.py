@@ -10,8 +10,8 @@ from naver_api import make_item_id, strip_html
 
 
 DATA_DIR = Path("data")
-KEYWORD_MASTER_PATH = Path("keyword_master.t1")
-EXCLUSION_KEYWORDS_PATH = Path("exclusion_keywords.t1")
+KEYWORD_MASTER_PATH = Path("keyword_master.xlsx")
+EXCLUSION_KEYWORDS_PATH = Path("exclusion_keywords.xlsx")
 LOW_DISCOUNT_RATE = -10.0
 MIN_VALID_PRICE_RATIO = 0.10
 DEFAULT_EXCLUSION_KEYWORDS = ["렌탈", "약정", "호환", "구독", "전동", "보호기", "고정식", "이동식", "거치대"]
@@ -72,7 +72,7 @@ def now_text():
 
 
 def snapshot_name(dt=None):
-    return (dt or datetime.now()).strftime("%Y%m%d_%H%M%S.t1")
+    return (dt or datetime.now()).strftime("%Y%m%d_%H%M%S.xlsx")
 
 
 def mapping_key(own_sku, competitor_sku):
@@ -106,28 +106,16 @@ def ensure_keyword_master():
 def ensure_exclusion_keywords():
     if EXCLUSION_KEYWORDS_PATH.exists():
         return
-    with EXCLUSION_KEYWORDS_PATH.open("w", encoding="cp949", newline="") as file:
-        file.write("sep=,\n")
-        file.write("제외키워드,사용여부,메모\n")
-        for keyword in DEFAULT_EXCLUSION_KEYWORDS:
-            file.write(f"{keyword},Y,상품명 또는 판매처 포함 시 제외\n")
+    rows = [
+        {"제외키워드": keyword, "사용여부": "Y", "메모": "상품명 또는 판매처 포함 시 제외"}
+        for keyword in DEFAULT_EXCLUSION_KEYWORDS
+    ]
+    pd.DataFrame(rows).to_excel(EXCLUSION_KEYWORDS_PATH, index=False)
 
 
 def read_exclusion_keywords():
     ensure_exclusion_keywords()
-    skiprows = 0
-    for encoding in ("cp949", "utf-8-sig"):
-        try:
-            with EXCLUSION_KEYWORDS_PATH.open("r", encoding=encoding) as file:
-                if file.readline().strip().lower().startswith("sep="):
-                    skiprows = 1
-            break
-        except UnicodeDecodeError:
-            continue
-    try:
-        df = pd.read_csv(EXCLUSION_KEYWORDS_PATH, encoding="cp949", sep=None, engine="python", skiprows=skiprows).fillna("")
-    except UnicodeDecodeError:
-        df = pd.read_csv(EXCLUSION_KEYWORDS_PATH, encoding="utf-8-sig", sep=None, engine="python", skiprows=skiprows).fillna("")
+    df = pd.read_excel(EXCLUSION_KEYWORDS_PATH).fillna("")
     if "제외키워드" not in df.columns:
         return DEFAULT_EXCLUSION_KEYWORDS
     if "사용여부" in df.columns:
@@ -143,20 +131,7 @@ def should_exclude_item(item, exclusion_keywords=None):
 
 def read_keyword_master():
     ensure_keyword_master()
-    skiprows = 0
-    for encoding in ("utf-8-sig", "cp949"):
-        try:
-            with KEYWORD_MASTER_PATH.open("r", encoding=encoding) as file:
-                if file.readline().strip().lower().startswith("sep="):
-                    skiprows = 1
-            break
-        except UnicodeDecodeError:
-            continue
-
-    try:
-        df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="utf-8-sig", sep=None, engine="python", skiprows=skiprows).fillna("")
-    except UnicodeDecodeError:
-        df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="cp949", sep=None, engine="python", skiprows=skiprows).fillna("")
+    df = pd.read_excel(KEYWORD_MASTER_PATH).fillna("")
     df = df.rename(columns=MASTER_IMPORT_COLUMNS)
 
     for column in LEGACY_COLUMNS:
@@ -186,10 +161,7 @@ def save_keyword_master(df):
         if column not in df.columns:
             df[column] = ""
     export_df = df[MASTER_COLUMNS].rename(columns=MASTER_EXPORT_COLUMNS)
-    csv_text = export_df.to_csv(index=False)
-    with KEYWORD_MASTER_PATH.open("w", encoding="cp949", newline="") as file:
-        file.write("sep=,\n")
-        file.write(csv_text)
+    export_df.to_excel(KEYWORD_MASTER_PATH, index=False)
 
 
 def add_keyword(category, keyword=None, is_default="N", own_sku=None, competitor_sku=None, base_price=0):
@@ -261,7 +233,7 @@ def latest_file(category, keyword):
     folder = keyword_dir(category, keyword)
     if not folder.exists():
         return None
-    files = sorted(folder.glob("*.t1"), reverse=True)
+    files = sorted(folder.glob("*.xlsx"), reverse=True)
     return files[0] if files else None
 
 
@@ -270,7 +242,7 @@ def parse_file_time(path):
 
 
 def read_snapshot(path):
-    df = pd.read_csv(path, encoding="utf-8-sig").fillna("")
+    df = pd.read_excel(path).fillna("")
     if "price" not in df.columns and "lprice" in df.columns:
         df["price"] = df["lprice"]
     if "lprice" not in df.columns and "price" in df.columns:
@@ -348,7 +320,7 @@ def write_snapshot(category, keyword, items, total, snapshot_time=None, side="ow
     if file_path.exists():
         existing = read_snapshot(file_path)
         df = pd.concat([existing, df], ignore_index=True)
-    df.to_csv(file_path, index=False, encoding="utf-8-sig")
+    df.to_excel(file_path, index=False)
     return file_path, df
 
 
@@ -511,7 +483,7 @@ def previous_summary_for_keyword(category, keyword, current_file, product_type="
     folder = keyword_dir(category, keyword)
     if not folder.exists():
         return None
-    files = sorted(folder.glob("*.t1"), reverse=True)
+    files = sorted(folder.glob("*.xlsx"), reverse=True)
     previous = [path for path in files if path != current_file]
     if not previous:
         return None
@@ -524,7 +496,7 @@ def item_price_trend(category, keyword, product_type="all", target_count=8):
     if not folder.exists():
         return {"snapshots": [], "own": {"series": []}, "competitor": {"series": []}}
 
-    files = sorted(folder.glob("*.t1"))
+    files = sorted(folder.glob("*.xlsx"))
     snapshots = []
     latest_by_side = {"own": None, "competitor": None}
     for path in files:

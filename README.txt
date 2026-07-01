@@ -1,75 +1,50 @@
-네이버 API 기반 로컬 가격 트래킹 대시보드
+TV 가격 트래킹 메일 자동화 V3
 
-1. 실행
-- 개발 실행:
-  py dashboard_app.py
+1. 운영 흐름
+- GitHub Actions가 매일 오전 9시(KST)에 실행됩니다.
+- TV 기본 모델 7개를 네이버 쇼핑 API로 조회합니다.
+- 기준가 대비 저가/고가 통계, AI 요약, 최저가 게시물, TOP20 게시물을 정적 HTML로 생성합니다.
+- 생성된 HTML, PNG 캡처, price_data XLSX를 메일에 첨부합니다.
 
-- 실행 후 브라우저가 자동으로 열립니다.
-  http://127.0.0.1:8765/
+2. GitHub Actions
+- workflow 파일: .github/workflows/test_mail.yml
+- 자동 실행: 매일 09:00 KST
+- 수동 실행: GitHub Actions > Test Mail > Run workflow
 
-2. 최초 설정
-- 화면 왼쪽의 "API Key 설정" 버튼을 누릅니다.
-- 네이버 개발자 센터에서 발급받은 Client ID / Client Secret을 입력합니다.
-- 저장된 값은 이 폴더의 config.json에만 보관됩니다.
-- config.json은 간단한 난독화만 적용되어 있습니다. 외부 공유 금지입니다.
+3. 필수 Repository Secrets
+- GMAIL_ID
+- GMAIL_APP_PASSWORD
+- NAVER_CLIENT_ID
+- NAVER_CLIENT_SECRET
 
-3. 데이터 저장
-- DB는 사용하지 않습니다.
-- 수집 데이터는 data/카테고리/키워드/YYYYMMDD_HHMMSS.t1 구조로 저장됩니다.
-- .t1 내부 포맷은 utf-8-sig CSV입니다.
-- 키워드 마스터는 keyword_master.t1에 저장됩니다.
+4. 관리 파일
+- keyword_master.xlsx
+  - TV 기본 모델과 기준가를 관리합니다.
+  - GitHub 웹에서 직접 수정할 수 있습니다.
 
-4. 쿨타임
-- 동일 카테고리 + 동일 키워드는 기본 30분에 1회만 네이버 API를 호출합니다.
-- 30분 이내 재조회 시 최신 .t1 파일을 읽어 화면에 표시합니다.
+- exclusion_keywords.xlsx
+  - 상품명 또는 판매처에 포함되면 제외할 키워드를 관리합니다.
+  - 기본 제외 키워드: 렌탈, 약정, 호환, 구독, 전동, 보호기, 고정식, 이동식, 거치대
 
-5. 수집 제한
-- 메일 리포트 자동화는 TV 기본 모델 기준으로 당사/경쟁사 각각 최대 1000건까지 조회합니다.
-- 대시보드 수동 조회의 기본 수집 개수는 Top 100입니다.
-- 옵션에서 Top 300까지 선택할 수 있습니다.
-- 한 번에 최대 10개 키워드까지만 조회합니다.
+5. 수집 기준
+- 당사 모델코드와 경쟁사 모델코드를 각각 최대 1000건까지 조회합니다.
+- 네이버 API의 total 값은 전체 검색 결과 수입니다.
+- 첨부되는 price_data는 실제 가져온 MAX 1000건 기준입니다.
+- 기준가의 10% 미만 가격은 오류 가능성이 높아 제외합니다.
 
-5-1. 제외 키워드
-- exclusion_keywords.t1 파일에서 제외 키워드를 관리합니다.
-- 상품명 또는 판매처에 제외 키워드가 포함되면 수집 결과에서 제외합니다.
-- 기본 제외 키워드: 렌탈, 약정, 호환, 구독
-
-6. exe 빌드
-- Python이 설치된 개발 PC에서 아래 명령을 실행합니다.
+6. 로컬 테스트
   py -m pip install -r requirements.txt
-  .\build_exe.ps1
-
-- 빌드가 끝나면 dist/dashboard_tool.zip 파일이 생성됩니다.
-- 최종 사용자에게는 dashboard_tool.zip만 전달하면 됩니다.
-
-7. 배포 zip 구조
-dashboard_tool.zip
-  dashboard.exe
-  README.txt
-  config_sample.json
-  data/
-
-8. 메일 자동화 테스트
-- 운영 스케줄링은 적용하지 않습니다.
-- 테스트 메일은 수동 실행만 지원합니다.
-- 메일 발송 스크립트는 네이버 API를 호출하지 않습니다.
-- 메일 발송 스크립트는 get_latest_report()로 최신 HTML 리포트만 조회해 첨부합니다.
-- TV 리포트 생성 스크립트가 네이버 API를 호출해 TV 기본 7개 모델 기준 정적 HTML을 생성합니다.
-
-로컬 테스트:
   set GMAIL_ID=your_gmail@gmail.com
   set GMAIL_APP_PASSWORD=your_app_password
   set NAVER_CLIENT_ID=your_naver_client_id
   set NAVER_CLIENT_SECRET=your_naver_client_secret
-  python create_tv_report.py
-  python test_mail.py
+  py create_tv_report.py
+  py render_report_image.py
+  py test_mail.py
 
-GitHub Actions 테스트:
-  1. GitHub Repository Secret에 GMAIL_ID, GMAIL_APP_PASSWORD, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET이 등록되어 있는지 확인합니다.
-  2. GitHub Actions 메뉴에서 "Test Mail" workflow를 선택합니다.
-  3. Run workflow 버튼으로 수동 실행합니다.
-  4. workflow가 네이버 API로 TV 기본 7개 모델을 조회하고 HTML 리포트를 생성합니다.
-  5. seongjin.son@samsung.com 메일 수신 여부와 HTML 첨부파일을 확인합니다.
-
-테스트 메일 제목:
-  [TEST] TV 가격 트래킹 리포트
+7. 주요 소스
+- create_tv_report.py: 네이버 API 조회, 데이터 가공, XLSX 생성
+- report_generator.py: 정적 HTML 리포트 생성
+- render_report_image.py: HTML 리포트 PNG 캡처 생성
+- test_mail.py: 최신 리포트 조회 후 메일 발송
+- storage.py: XLSX 마스터 파일과 수집 스냅샷 처리

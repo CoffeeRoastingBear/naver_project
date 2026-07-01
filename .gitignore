@@ -5,8 +5,6 @@ config.json
 data/
 reports/
 *.t1
-!keyword_master.t1
-!exclusion_keywords.t1
 
 # Local font bundle
 배달의민족글꼴모음/*

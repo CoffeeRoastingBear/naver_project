@@ -1,9 +1,0 @@
-{
-  "client_id": "사용자 입력 후 config.json에 난독화 저장",
-  "client_secret": "사용자 입력 후 config.json에 난독화 저장",
-  "top_n": 100,
-  "cooldown_minutes": 30,
-  "category_cooldowns": {
-    "TV": 30
-  }
-}
