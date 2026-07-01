@@ -25,6 +25,7 @@ Copy-Item -LiteralPath (Join-Path $distDir "dashboard.exe") -Destination (Join-P
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join-Path $packageDir "README.txt") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "config_sample.json") -Destination (Join-Path $packageDir "config_sample.json") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "keyword_master.t1") -Destination (Join-Path $packageDir "keyword_master.t1") -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "exclusion_keywords.t1") -Destination (Join-Path $packageDir "exclusion_keywords.t1") -Force
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($packageDir, $zipPath)

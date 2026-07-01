@@ -32,7 +32,7 @@ def make_item_id(item):
 
 
 def fetch_shop_results(client_id, client_secret, keyword, limit=100, sleep_seconds=0.4):
-    limit = max(1, min(int(limit), 300))
+    limit = max(1, min(int(limit), 1000))
     display = min(100, limit)
     items = []
     total = 0
@@ -64,4 +64,3 @@ def fetch_shop_results(client_id, client_secret, keyword, limit=100, sleep_secon
         time.sleep(float(sleep_seconds))
 
     return items[:limit], total
-

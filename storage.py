@@ -11,8 +11,10 @@ from naver_api import make_item_id, strip_html
 
 DATA_DIR = Path("data")
 KEYWORD_MASTER_PATH = Path("keyword_master.t1")
+EXCLUSION_KEYWORDS_PATH = Path("exclusion_keywords.t1")
 LOW_DISCOUNT_RATE = -10.0
 MIN_VALID_PRICE_RATIO = 0.10
+DEFAULT_EXCLUSION_KEYWORDS = ["렌탈", "약정", "호환", "구독"]
 
 MASTER_COLUMNS = ["category", "keyword", "own_sku", "competitor_sku", "base_price", "is_default", "created_at"]
 LEGACY_COLUMNS = ["category", "keyword", "is_default", "created_at"]
@@ -99,6 +101,44 @@ def ensure_keyword_master():
     if KEYWORD_MASTER_PATH.exists():
         return
     save_keyword_master(pd.DataFrame(columns=MASTER_COLUMNS))
+
+
+def ensure_exclusion_keywords():
+    if EXCLUSION_KEYWORDS_PATH.exists():
+        return
+    with EXCLUSION_KEYWORDS_PATH.open("w", encoding="cp949", newline="") as file:
+        file.write("sep=,\n")
+        file.write("제외키워드,사용여부,메모\n")
+        for keyword in DEFAULT_EXCLUSION_KEYWORDS:
+            file.write(f"{keyword},Y,상품명 또는 판매처 포함 시 제외\n")
+
+
+def read_exclusion_keywords():
+    ensure_exclusion_keywords()
+    skiprows = 0
+    for encoding in ("cp949", "utf-8-sig"):
+        try:
+            with EXCLUSION_KEYWORDS_PATH.open("r", encoding=encoding) as file:
+                if file.readline().strip().lower().startswith("sep="):
+                    skiprows = 1
+            break
+        except UnicodeDecodeError:
+            continue
+    try:
+        df = pd.read_csv(EXCLUSION_KEYWORDS_PATH, encoding="cp949", sep=None, engine="python", skiprows=skiprows).fillna("")
+    except UnicodeDecodeError:
+        df = pd.read_csv(EXCLUSION_KEYWORDS_PATH, encoding="utf-8-sig", sep=None, engine="python", skiprows=skiprows).fillna("")
+    if "제외키워드" not in df.columns:
+        return DEFAULT_EXCLUSION_KEYWORDS
+    if "사용여부" in df.columns:
+        df = df[df["사용여부"].astype(str).str.upper().ne("N")]
+    return [str(value).strip().lower() for value in df["제외키워드"].tolist() if str(value).strip()]
+
+
+def should_exclude_item(item, exclusion_keywords=None):
+    exclusion_keywords = exclusion_keywords if exclusion_keywords is not None else read_exclusion_keywords()
+    text = f"{strip_html(item.get('title'))} {item.get('mallName', '')}".lower()
+    return any(keyword and keyword in text for keyword in exclusion_keywords)
 
 
 def read_keyword_master():
@@ -266,12 +306,15 @@ def filter_product_type(df, product_type="all"):
 
 def write_snapshot(category, keyword, items, total, snapshot_time=None, side="own", sku=None):
     ensure_dirs()
+    exclusion_keywords = read_exclusion_keywords()
     snapshot_time = snapshot_time or datetime.now()
     folder = keyword_dir(category, keyword)
     folder.mkdir(parents=True, exist_ok=True)
 
     rows = []
     for rank, item in enumerate(items, start=1):
+        if should_exclude_item(item, exclusion_keywords):
+            continue
         product_id = str(item.get("productId") or "")
         item_id = make_item_id(item)
         lprice = int(item.get("lprice") or 0)

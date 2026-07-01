@@ -16,7 +16,7 @@ from storage import (
 
 
 CATEGORY = "TV"
-TOP_N = 100
+TOP_N = 1000
 
 
 def naver_credentials():

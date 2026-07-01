@@ -63,10 +63,12 @@ def _model_sidebar(rows):
     return "".join(items) or "<div class=\"empty-side\">표시 모델 없음</div>"
 
 
-def _top20_panel(rows):
+def _top20_panel(rows, side=None):
     items = []
     for row in rows or []:
         for item in (row.get("low_items") or [])[:20]:
+            if side and item.get("side") != side:
+                continue
             items.append((row, item))
     items = sorted(items, key=lambda pair: (int(pair[1].get("lprice") or pair[1].get("price") or 0), float(pair[1].get("discount_rate") or 0)))[:20]
 
@@ -117,30 +119,17 @@ def generate_price_report(rows, summary_lines=None, generated_at=None, stats=Non
     summary_lines = (summary_lines or [])[:3]
     file_path = REPORTS_DIR / f"price_report_{generated_at.strftime('%Y%m%d_%H%M%S')}.html"
     sidebar_models = _model_sidebar(rows)
-    top20_html = _top20_panel(rows)
+    own_top20_html = _top20_panel(rows, "own")
+    competitor_top20_html = _top20_panel(rows, "competitor")
 
     row_html = []
     for row in rows or []:
-        top_items = []
-        for index, item in enumerate((row.get("low_items") or [])[:20], start=1):
-            title = _esc(item.get("title") or "-")
-            link = str(item.get("link") or "").strip()
-            title_html = f'<a href="{_esc(link)}">{index}. {title}</a>' if link else f"{index}. {title}"
-            top_items.append(
-                "<li>"
-                f"{title_html}<br>"
-                f"<small>{'경쟁사' if item.get('side') == 'competitor' else '당사'} · {_esc(item.get('mall_name') or '-')} · "
-                f"<span class=\"nowrap\">{_fmt_price(item.get('lprice') or item.get('price'))}</span> · {_fmt_rate(item.get('discount_rate'))}</small>"
-                "</li>"
-            )
-
         row_html.append(
             "<tr>"
             f"<td><strong>{_esc(row.get('own_sku'))}</strong><br><small>경쟁사 {_esc(row.get('competitor_sku'))}</small></td>"
             f"<td class=\"price-cell\">{_fmt_price(row.get('base_price'))}</td>"
-            f"<td><div class=\"lowest\"><div>당사 최저가</div>{_price_link(row.get('own_lowest'))}"
-            f"<hr><div>경쟁사 최저가</div>{_price_link(row.get('competitor_lowest'))}</div></td>"
-            f"<td><ol>{''.join(top_items)}</ol></td>"
+            f"<td>{_price_link(row.get('own_lowest'))}</td>"
+            f"<td>{_price_link(row.get('competitor_lowest'))}</td>"
             "</tr>"
         )
 
@@ -189,6 +178,9 @@ def generate_price_report(rows, summary_lines=None, generated_at=None, stats=Non
     .lowest hr {{ border: 0; border-top: 1px solid #e5e9f0; margin: 10px 0; }}
     .empty {{ text-align: center; color: #667085; }}
     .top-list {{ padding: 8px 16px 16px; }}
+    .top-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; border-top: 1px solid #d9e0e8; }}
+    .top-panel {{ border: 1px solid #e5e9f0; border-radius: 8px; overflow: hidden; }}
+    .top-panel-title {{ padding: 12px 14px; background: #f7f9fc; font-weight: 700; border-bottom: 1px solid #e5e9f0; }}
     .top-item {{ display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; border-top: 1px solid #edf1f5; padding: 10px 0; }}
     .top-item:first-child {{ border-top: 0; }}
     .item-image {{ width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e9f0; background: #f3f6fa; }}
@@ -198,6 +190,7 @@ def generate_price_report(rows, summary_lines=None, generated_at=None, stats=Non
     @media (max-width: 900px) {{
       .layout {{ grid-template-columns: 1fr; }}
       .sidebar {{ min-height: auto; }}
+      .top-grid {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -233,16 +226,22 @@ def generate_price_report(rows, summary_lines=None, generated_at=None, stats=Non
           <tr>
             <th>모델</th>
             <th>기준가</th>
-            <th>최저가 게시물</th>
-            <th>TOP20 게시물</th>
+            <th>당사 최저가</th>
+            <th>경쟁사 최저가</th>
           </tr>
         </thead>
         <tbody>{table_body}</tbody>
       </table>
-    </section>
-    <section class="card">
-      <div class="card-title">TOP20 게시물</div>
-      <div class="top-list">{top20_html}</div>
+      <div class="top-grid">
+        <section class="top-panel">
+          <div class="top-panel-title">최저가 상위 20개(당사)</div>
+          <div class="top-list">{own_top20_html}</div>
+        </section>
+        <section class="top-panel">
+          <div class="top-panel-title">최저가 상위 20개(X사)</div>
+          <div class="top-list">{competitor_top20_html}</div>
+        </section>
+      </div>
     </section>
     </main>
   </div>
