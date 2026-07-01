@@ -14,7 +14,7 @@ KEYWORD_MASTER_PATH = Path("keyword_master.t1")
 EXCLUSION_KEYWORDS_PATH = Path("exclusion_keywords.t1")
 LOW_DISCOUNT_RATE = -10.0
 MIN_VALID_PRICE_RATIO = 0.10
-DEFAULT_EXCLUSION_KEYWORDS = ["렌탈", "약정", "호환", "구독"]
+DEFAULT_EXCLUSION_KEYWORDS = ["렌탈", "약정", "호환", "구독", "전동", "보호기", "고정식", "이동식", "거치대"]
 
 MASTER_COLUMNS = ["category", "keyword", "own_sku", "competitor_sku", "base_price", "is_default", "created_at"]
 LEGACY_COLUMNS = ["category", "keyword", "is_default", "created_at"]

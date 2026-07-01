@@ -88,6 +88,7 @@ def build_html_body(sent_at, environment, report_path, summary_lines=None, stats
           </tr>
         </table>
         <p style="margin:16px 0 0;color:#667085;font-size:12px;">정적 HTML 리포트와 캡처 이미지를 함께 첨부했습니다.</p>
+        <p style="margin:6px 0 0;color:#667085;font-size:12px;">* price_data는 각 모델코드별 검색 결과 중 MAX 1000건만 첨부됩니다.</p>
       </div>
     </div>
   </div>
