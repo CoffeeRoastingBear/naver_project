@@ -67,8 +67,7 @@ def _top20_panel(rows):
     items = []
     for row in rows or []:
         for item in (row.get("low_items") or [])[:20]:
-            if item.get("side") == "own":
-                items.append((row, item))
+            items.append((row, item))
     items = sorted(items, key=lambda pair: (int(pair[1].get("lprice") or pair[1].get("price") or 0), float(pair[1].get("discount_rate") or 0)))[:20]
 
     blocks = []
@@ -78,10 +77,11 @@ def _top20_panel(rows):
         image = str(item.get("image") or "").strip()
         image_html = f'<img class="item-image" src="{_esc(image)}" alt="">' if image else '<div class="item-image placeholder"></div>'
         title_html = f'<a class="item-title" href="{_esc(link)}">{index}. {title}</a>' if link else f'<div class="item-title">{index}. {title}</div>'
+        side = "경쟁사" if item.get("side") == "competitor" else "당사"
         blocks.append(
             "<div class=\"top-item\">"
             f"{image_html}<div class=\"item-body\">{title_html}"
-            f"<div class=\"item-meta\">당사 · {_esc(row.get('own_sku'))} · "
+            f"<div class=\"item-meta\">{side} · {_esc(row.get('own_sku'))} / {_esc(row.get('competitor_sku'))} · "
             f"{_esc(item.get('mall_name') or '-')} · {_fmt_price(item.get('lprice') or item.get('price'))} · {_fmt_rate(item.get('discount_rate'))}</div>"
             "</div>"
             "</div>"
@@ -110,7 +110,7 @@ def get_latest_report():
     return str(reports[0]) if reports else None
 
 
-def generate_price_report(rows, summary_lines=None, generated_at=None):
+def generate_price_report(rows, summary_lines=None, generated_at=None, stats=None, attachments=None):
     """Write a standalone HTML report from already-collected dashboard rows."""
     REPORTS_DIR.mkdir(exist_ok=True)
     generated_at = generated_at or datetime.now()
@@ -122,16 +122,15 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
     row_html = []
     for row in rows or []:
         top_items = []
-        own_items = [item for item in (row.get("low_items") or []) if item.get("side") == "own"][:20]
-        for index, item in enumerate(own_items, start=1):
+        for index, item in enumerate((row.get("low_items") or [])[:20], start=1):
             title = _esc(item.get("title") or "-")
             link = str(item.get("link") or "").strip()
-            title_html = f'<a href="{_esc(link)}">최저가 (클릭)</a>' if link else title
+            title_html = f'<a href="{_esc(link)}">{index}. {title}</a>' if link else f"{index}. {title}"
             top_items.append(
                 "<li>"
-                f"{title_html} <span class=\"nowrap\">{_fmt_price(item.get('lprice') or item.get('price'))}</span><br>"
+                f"{title_html}<br>"
                 f"<small>{'경쟁사' if item.get('side') == 'competitor' else '당사'} · {_esc(item.get('mall_name') or '-')} · "
-                f"{_fmt_rate(item.get('discount_rate'))}</small>"
+                f"<span class=\"nowrap\">{_fmt_price(item.get('lprice') or item.get('price'))}</span> · {_fmt_rate(item.get('discount_rate'))}</small>"
                 "</li>"
             )
 
@@ -235,14 +234,14 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
             <th>모델</th>
             <th>기준가</th>
             <th>최저가 게시물</th>
-            <th>최저가 TOP20</th>
+            <th>TOP20 게시물</th>
           </tr>
         </thead>
         <tbody>{table_body}</tbody>
       </table>
     </section>
     <section class="card">
-      <div class="card-title">최저가 TOP20</div>
+      <div class="card-title">TOP20 게시물</div>
       <div class="top-list">{top20_html}</div>
     </section>
     </main>
@@ -257,6 +256,8 @@ def generate_price_report(rows, summary_lines=None, generated_at=None):
                 "report_path": str(file_path),
                 "generated_at": generated_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": summary_lines,
+                "stats": stats or {},
+                "attachments": attachments or {},
             },
             ensure_ascii=False,
             indent=2,

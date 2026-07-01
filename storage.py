@@ -247,6 +247,8 @@ def read_snapshot(path):
         df["side"] = "own"
     if "sku" not in df.columns:
         df["sku"] = df.get("keyword", "")
+    if "image" not in df.columns:
+        df["image"] = ""
     return df
 
 
