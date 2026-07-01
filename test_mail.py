@@ -15,8 +15,13 @@ SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
 SENDER_ENV = "GMAIL_ID"
 PASSWORD_ENV = "GMAIL_APP_PASSWORD"
-RECIPIENT = "seongjin.son@samsung.com"
-SUBJECT = "[TEST] TV 가격 트래킹 리포트"
+RECIPIENTS = [
+    "seongjin.son@samsung.com",
+    "jeeyun.chung@samsung.com",
+    "daehwi.yang@samsung.com",
+    "hayng.kim@samsung.com",
+]
+SUBJECT = "[TV 가격 트래킹] 오전 9시 리포트"
 
 
 def current_environment():
@@ -70,7 +75,7 @@ def build_html_body(sent_at, environment, report_path, summary_lines=None, stats
     <div style="border:1px solid #d9e0e8;border-radius:10px;overflow:hidden;">
       <div style="background:#142235;color:#ffffff;padding:18px 20px;">
         <h2 style="margin:0;font-size:22px;">&lt;&lt; AI 요약 &gt;&gt;</h2>
-        <p style="margin:8px 0 0;color:#c8d3e0;font-size:13px;">오전 10시 기준 운영 발송 구조 테스트</p>
+        <p style="margin:8px 0 0;color:#c8d3e0;font-size:13px;">오전 9시 기준 자동 가격 트래킹 리포트</p>
       </div>
       <div style="padding:18px 20px;background:#ffffff;">
         {_stats_html(stats)}
@@ -109,10 +114,10 @@ def _attach_file(message, path):
     message.attach(attachment)
 
 
-def build_message(sender, recipient, subject, html_body, report_path):
+def build_message(sender, recipients, subject, html_body, report_path):
     message = MIMEMultipart("mixed")
     message["From"] = sender
-    message["To"] = recipient
+    message["To"] = ", ".join(recipients)
     message["Subject"] = subject
 
     body_part = MIMEMultipart("alternative")
@@ -139,7 +144,7 @@ def send_test_mail():
     environment = current_environment()
     meta = get_latest_report_meta()
     html_body = build_html_body(sent_at, environment, report_path, meta.get("summary"), meta.get("stats"))
-    message = build_message(sender, RECIPIENT, SUBJECT, html_body, report_path)
+    message = build_message(sender, RECIPIENTS, SUBJECT, html_body, report_path)
     attachments = meta.get("attachments") or {}
     if attachments.get("xlsx"):
         _attach_file(message, attachments["xlsx"])
@@ -147,9 +152,9 @@ def send_test_mail():
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
         server.login(sender, password)
-        server.sendmail(sender, [RECIPIENT], message.as_string())
+        server.sendmail(sender, RECIPIENTS, message.as_string())
 
-    print(f"Test mail sent to {RECIPIENT} from {sender} at {sent_at} ({environment})")
+    print(f"Mail sent to {', '.join(RECIPIENTS)} from {sender} at {sent_at} ({environment})")
     print(f"Attached report: {report_path}")
 
 
