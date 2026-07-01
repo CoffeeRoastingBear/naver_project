@@ -19,6 +19,38 @@ CATEGORY = "TV"
 TOP_N = 1000
 
 
+def price_position_stats(df, base_price):
+    base_price = int(base_price or 0)
+    total = int(len(df))
+    if total <= 0 or base_price <= 0:
+        return {
+            "total_count": total,
+            "lower_count": 0,
+            "lower_rate": 0.0,
+            "higher_count": 0,
+            "higher_rate": 0.0,
+        }
+    prices = pd.to_numeric(df["lprice"], errors="coerce").dropna()
+    denominator = int(len(prices))
+    if denominator <= 0:
+        return {
+            "total_count": 0,
+            "lower_count": 0,
+            "lower_rate": 0.0,
+            "higher_count": 0,
+            "higher_rate": 0.0,
+        }
+    lower_count = int((prices < base_price).sum())
+    higher_count = int((prices > base_price).sum())
+    return {
+        "total_count": denominator,
+        "lower_count": lower_count,
+        "lower_rate": round((lower_count / denominator) * 100, 1),
+        "higher_count": higher_count,
+        "higher_rate": round((higher_count / denominator) * 100, 1),
+    }
+
+
 def naver_credentials():
     client_id = os.getenv("NAVER_CLIENT_ID", "").strip()
     client_secret = os.getenv("NAVER_CLIENT_SECRET", "").strip()
@@ -78,6 +110,7 @@ def create_tv_report():
         snapshot_df["own_sku"] = own_sku
         snapshot_df["competitor_sku"] = competitor_sku
         snapshot_df["base_price"] = int(mapping["base_price"] or 0)
+        position_stats = price_position_stats(snapshot_df, mapping["base_price"])
         collected_frames.append(snapshot_df)
         model_stats.append(
             {
@@ -86,6 +119,11 @@ def create_tv_report():
                 "own_total": int(own_total or 0),
                 "competitor_total": int(competitor_total or 0),
                 "total": int(own_total or 0) + int(competitor_total or 0),
+                "attached_count": position_stats["total_count"],
+                "lower_count": position_stats["lower_count"],
+                "lower_rate": position_stats["lower_rate"],
+                "higher_count": position_stats["higher_count"],
+                "higher_rate": position_stats["higher_rate"],
             }
         )
 
@@ -96,6 +134,7 @@ def create_tv_report():
             and bool(summary.get("has_competitor_price"))
             and int(summary.get("low_count") or 0) > 0
         ):
+            summary["price_position_stats"] = position_stats
             rows.append(summary)
 
     summary_lines = ai_summary_for_rows(rows)
