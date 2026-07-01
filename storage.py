@@ -11,6 +11,8 @@ from naver_api import make_item_id, strip_html
 
 DATA_DIR = Path("data")
 KEYWORD_MASTER_PATH = Path("keyword_master.t1")
+LOW_DISCOUNT_RATE = -10.0
+
 MASTER_COLUMNS = ["category", "keyword", "own_sku", "competitor_sku", "base_price", "is_default", "created_at"]
 LEGACY_COLUMNS = ["category", "keyword", "is_default", "created_at"]
 MASTER_EXPORT_COLUMNS = {
@@ -23,13 +25,6 @@ MASTER_EXPORT_COLUMNS = {
     "created_at": "등록일시",
 }
 MASTER_IMPORT_COLUMNS = {label: key for key, label in MASTER_EXPORT_COLUMNS.items()}
-
-DEFAULT_MAPPINGS = [
-    {"category": "TV", "own_sku": "KQ85QD80AFXKR", "competitor_sku": "OLED85C5KNA", "base_price": 4590000},
-    {"category": "TV", "own_sku": "KQ75QD80AFXKR", "competitor_sku": "OLED77C5KNA", "base_price": 3290000},
-    {"category": "TV", "own_sku": "KQ65QD80AFXKR", "competitor_sku": "OLED65C5KNA", "base_price": 2190000},
-    {"category": "TV", "own_sku": "KQ85QND90AFXKR", "competitor_sku": "OLED83G5KNA", "base_price": 6290000},
-]
 
 CATEGORY_NAMES = [
     "TV",
@@ -108,16 +103,14 @@ def ensure_keyword_master():
 def read_keyword_master():
     ensure_keyword_master()
     skiprows = 0
-    try:
-        with KEYWORD_MASTER_PATH.open("r", encoding="utf-8-sig") as file:
-            first_line = file.readline().strip().lower()
-            if first_line.startswith("sep="):
-                skiprows = 1
-    except UnicodeDecodeError:
-        with KEYWORD_MASTER_PATH.open("r", encoding="cp949") as file:
-            first_line = file.readline().strip().lower()
-            if first_line.startswith("sep="):
-                skiprows = 1
+    for encoding in ("utf-8-sig", "cp949"):
+        try:
+            with KEYWORD_MASTER_PATH.open("r", encoding=encoding) as file:
+                if file.readline().strip().lower().startswith("sep="):
+                    skiprows = 1
+            break
+        except UnicodeDecodeError:
+            continue
 
     try:
         df = pd.read_csv(KEYWORD_MASTER_PATH, encoding="utf-8-sig", sep=None, engine="python", skiprows=skiprows).fillna("")
@@ -128,7 +121,6 @@ def read_keyword_master():
     for column in LEGACY_COLUMNS:
         if column not in df.columns:
             df[column] = ""
-
     if "own_sku" not in df.columns:
         df["own_sku"] = df["keyword"]
     if "competitor_sku" not in df.columns:
@@ -164,7 +156,7 @@ def add_keyword(category, keyword=None, is_default="N", own_sku=None, competitor
     own_sku = str(own_sku or keyword or "").strip().upper()
     competitor_sku = str(competitor_sku or "").strip().upper()
     if not category or not own_sku or not competitor_sku:
-        raise ValueError("카테고리, 당사 SKU, 경쟁사 SKU를 모두 입력해주세요.")
+        raise ValueError("카테고리, 당사 모델코드, 경쟁사 모델코드를 모두 입력해주세요.")
 
     keyword = mapping_key(own_sku, competitor_sku)
     base_price = int(float(base_price or 0))
@@ -191,9 +183,8 @@ def add_keyword(category, keyword=None, is_default="N", own_sku=None, competitor
 def delete_keyword(category, keyword):
     df = read_keyword_master()
     mask = (df["category"] == category) & (df["keyword"] == keyword)
-    if not mask.any():
-        return
-    save_keyword_master(df[~mask])
+    if mask.any():
+        save_keyword_master(df[~mask])
 
 
 def categories_payload():
@@ -316,24 +307,8 @@ def write_snapshot(category, keyword, items, total, snapshot_time=None, side="ow
 
 def write_mapping_snapshot(category, keyword, own_items, competitor_items, own_total, competitor_total, mapping, snapshot_time=None):
     snapshot_time = snapshot_time or datetime.now()
-    file_path, _ = write_snapshot(
-        category,
-        keyword,
-        own_items,
-        own_total,
-        snapshot_time=snapshot_time,
-        side="own",
-        sku=mapping["own_sku"],
-    )
-    file_path, df = write_snapshot(
-        category,
-        keyword,
-        competitor_items,
-        competitor_total,
-        snapshot_time=snapshot_time,
-        side="competitor",
-        sku=mapping["competitor_sku"],
-    )
+    file_path, _ = write_snapshot(category, keyword, own_items, own_total, snapshot_time, "own", mapping["own_sku"])
+    file_path, df = write_snapshot(category, keyword, competitor_items, competitor_total, snapshot_time, "competitor", mapping["competitor_sku"])
     return file_path, df
 
 
@@ -367,6 +342,62 @@ def side_summary(df, side, product_type="all"):
     return df_summary(df[df["side"].astype(str) == side], product_type)
 
 
+def discount_rate(price, base_price):
+    try:
+        base_price = float(base_price or 0)
+        price = float(price or 0)
+    except (TypeError, ValueError):
+        return None
+    if base_price <= 0 or price <= 0:
+        return None
+    return ((price - base_price) / base_price) * 100
+
+
+def add_discount_columns(df, base_price):
+    df = df.copy()
+    if df.empty:
+        df["discount_rate"] = []
+        df["discount_percent"] = []
+        return df
+    df["lprice"] = pd.to_numeric(df.get("lprice", df.get("price")), errors="coerce")
+    df["discount_rate"] = df["lprice"].apply(lambda price: discount_rate(price, base_price))
+    df["discount_percent"] = df["discount_rate"].apply(lambda value: abs(float(value)) if value is not None and value <= 0 else 0)
+    return df
+
+
+def low_price_items(df, base_price, side=None):
+    df = add_discount_columns(df, base_price)
+    if side:
+        df = df[df["side"].astype(str) == side]
+    if df.empty:
+        return df
+    return df[df["discount_rate"].apply(lambda value: value is not None and value <= LOW_DISCOUNT_RATE)]
+
+
+def item_record(row):
+    value = row.to_dict()
+    value["lprice"] = int(value.get("lprice") or value.get("price") or 0)
+    value["price"] = int(value.get("price") or value.get("lprice") or 0)
+    rate = value.get("discount_rate")
+    value["discount_rate"] = round(float(rate), 2) if rate is not None and not pd.isna(rate) else None
+    value["discount_percent"] = round(abs(value["discount_rate"]), 2) if value["discount_rate"] is not None else 0
+    return value
+
+
+def lowest_item_payload(df):
+    if df.empty:
+        return None
+    sorted_df = df.sort_values(["lprice", "discount_percent"], ascending=[True, False])
+    return item_record(sorted_df.iloc[0])
+
+
+def top_low_items(df, limit=20):
+    if df.empty:
+        return []
+    sorted_df = df.sort_values(["lprice", "discount_percent"], ascending=[True, False])
+    return [item_record(row) for _, row in sorted_df.head(limit).iterrows()]
+
+
 def empty_mapping_summary(category, mapping):
     return {
         "category": category,
@@ -378,41 +409,50 @@ def empty_mapping_summary(category, mapping):
         "snapshot_time": "",
         "own": df_summary(pd.DataFrame()),
         "competitor": df_summary(pd.DataFrame()),
-        "avg_price": 0,
-        "min_price": 0,
-        "max_price": 0,
-        "count": 0,
-        "search_total": 0,
+        "own_lowest": None,
+        "competitor_lowest": None,
+        "low_count": 0,
+        "low_items": [],
         "items": [],
     }
 
 
 def latest_summary_for_keyword(category, keyword, product_type="all", mapping=None):
     mapping = mapping or get_mapping(category, keyword) or {"keyword": keyword, "own_sku": keyword, "competitor_sku": "", "base_price": 0}
+    base_price = int(mapping.get("base_price") or 0)
     path = latest_file(category, keyword)
     if not path:
         return None
 
     df = filter_product_type(read_snapshot(path), product_type)
-    own = side_summary(df, "own", "all")
-    competitor = side_summary(df, "competitor", "all")
-    combined = df_summary(df, "all")
+    own_df = df[df["side"].astype(str) == "own"]
+    competitor_df = df[df["side"].astype(str) == "competitor"]
+    low_df = low_price_items(df, base_price)
+    own_low_df = low_price_items(df, base_price, "own")
+    competitor_low_df = low_price_items(df, base_price, "competitor")
+    snapshot_time = df["snapshot_time"].iloc[0] if len(df) and "snapshot_time" in df.columns else parse_file_time(path).strftime("%Y-%m-%d %H:%M:%S")
+
     summary = {
-        **combined,
+        **df_summary(low_df, "all"),
         "category": category,
         "keyword": keyword,
         "display_name": mapping.get("display_name") or display_name(mapping),
         "own_sku": mapping.get("own_sku", ""),
         "competitor_sku": mapping.get("competitor_sku", ""),
-        "base_price": int(mapping.get("base_price") or 0),
+        "base_price": base_price,
         "file": str(path),
-        "snapshot_time": df["snapshot_time"].iloc[0] if len(df) else parse_file_time(path).strftime("%Y-%m-%d %H:%M:%S"),
-        "own": own,
-        "competitor": competitor,
-        "items": df.to_dict("records"),
+        "snapshot_time": snapshot_time,
+        "own": df_summary(own_df, "all"),
+        "competitor": df_summary(competitor_df, "all"),
+        "own_low": df_summary(own_low_df, "all"),
+        "competitor_low": df_summary(competitor_low_df, "all"),
+        "own_lowest": lowest_item_payload(own_low_df),
+        "competitor_lowest": lowest_item_payload(competitor_low_df),
+        "low_count": int(len(low_df)),
+        "low_items": top_low_items(low_df, 20),
+        "items": top_low_items(low_df, 20),
+        "has_competitor_price": bool(len(_price_series(competitor_df))),
     }
-    summary["price_gap"] = competitor["avg_price"] - own["avg_price"] if own["avg_price"] and competitor["avg_price"] else None
-    summary["base_gap"] = own["avg_price"] - summary["base_price"] if own["avg_price"] and summary["base_price"] else None
     return summary
 
 
@@ -434,9 +474,6 @@ def item_price_trend(category, keyword, product_type="all", target_count=8):
         return {"snapshots": [], "own": {"series": []}, "competitor": {"series": []}}
 
     files = sorted(folder.glob("*.t1"))
-    if not files:
-        return {"snapshots": [], "own": {"series": []}, "competitor": {"series": []}}
-
     snapshots = []
     latest_by_side = {"own": None, "competitor": None}
     for path in files:
@@ -455,7 +492,7 @@ def item_price_trend(category, keyword, product_type="all", target_count=8):
     def build_side(side):
         latest_df = latest_by_side[side]
         if latest_df is None or latest_df.empty:
-            return {"title": side, "series": []}
+            return {"series": []}
         threshold = max(1, math.ceil(len(snapshots) * 0.45))
         by_key = {}
         for snap in snapshots:
@@ -498,6 +535,37 @@ def item_price_trend(category, keyword, product_type="all", target_count=8):
     }
 
 
+def ai_summary_for_rows(rows):
+    active = [row for row in rows if int(row.get("low_count") or 0) > 0]
+    if not active:
+        return [
+            "현재 기준가 대비 10% 이상 낮은 게시물이 있는 모델이 없습니다.",
+            "기준가 또는 경쟁사 가격이 없는 모델은 요약에서 제외했습니다.",
+            "상세 게시물은 URL 클릭 시 확인 가능합니다.",
+        ]
+
+    most_count = max(active, key=lambda row: int(row.get("low_count") or 0))
+    all_items = []
+    for row in active:
+        for item in row.get("low_items") or []:
+            all_items.append((row, item))
+    biggest = min(all_items, key=lambda pair: pair[1].get("discount_rate", 0)) if all_items else None
+    if biggest:
+        biggest_model, biggest_item = biggest
+        biggest_text = (
+            f"기준가 대비 가격 차이가 가장 큰 모델은 {biggest_model.get('own_sku')}이며 "
+            f"최대 {abs(float(biggest_item.get('discount_rate') or 0)):.1f}% 낮습니다."
+        )
+    else:
+        biggest_text = "기준가 대비 가격 차이가 가장 큰 모델을 계산할 수 없습니다."
+
+    return [
+        f"현재 기준가 대비 저가 게시물이 가장 많은 모델은 {most_count.get('own_sku')}이며 총 {int(most_count.get('low_count') or 0)}건입니다.",
+        biggest_text,
+        "상세 게시물은 URL 클릭 시 확인 가능합니다.",
+    ]
+
+
 def generate_test_data():
     category = "TV - test 시안"
     mappings = [
@@ -510,12 +578,7 @@ def generate_test_data():
     created_at = now_text()
     existing = read_keyword_master()
     test_keywords = [mapping_key(item["own_sku"], item["competitor_sku"]) for item in mappings]
-    existing = existing[
-        ~(
-            (existing["keyword"].isin(test_keywords))
-            & (existing["category"].isin(["TV", category]))
-        )
-    ]
+    existing = existing[~((existing["keyword"].isin(test_keywords)) & (existing["category"].isin(["TV", category])))]
     master_rows = []
     base_time = datetime.now().replace(second=0, microsecond=0) - timedelta(hours=6)
     own_malls = ["삼성공식스토어", "삼성전자파트너", "하이마트", "전자랜드"]
@@ -529,14 +592,14 @@ def generate_test_data():
             own_items = []
             competitor_items = []
             for rank in range(1, 9):
-                own_base = mapping["base_price"] - 180000 + rank * 28000 + mapping_index * 35000
-                competitor_base = mapping["base_price"] + 120000 + rank * 34000 + mapping_index * 42000
-                own_wave = ((snap_index % 4) - 1.5) * 36000
-                competitor_wave = ((snap_index % 5) - 2) * 52000
-                own_trend = -snap_index * (18000 + rank * 900)
-                competitor_trend = snap_index * (rank % 3 - 1) * 14000 - snap_index * 6000
-                own_price = max(600000, int(own_base + own_wave + own_trend + ((rank * 11 + snap_index) % 5) * 13000))
-                competitor_price = max(600000, int(competitor_base + competitor_wave + competitor_trend + ((rank * 7 + snap_index) % 6) * 15000))
+                own_base = mapping["base_price"] * 0.88 + rank * 18000 + mapping_index * 25000
+                competitor_base = mapping["base_price"] * 0.84 + rank * 22000 + mapping_index * 30000
+                own_wave = ((snap_index % 4) - 1.5) * 26000
+                competitor_wave = ((snap_index % 5) - 2) * 36000
+                own_trend = -snap_index * (9000 + rank * 500)
+                competitor_trend = -snap_index * (11000 + rank * 650)
+                own_price = max(450000, int(own_base + own_wave + own_trend + ((rank * 11 + snap_index) % 5) * 9000))
+                competitor_price = max(450000, int(competitor_base + competitor_wave + competitor_trend + ((rank * 7 + snap_index) % 6) * 11000))
                 own_id = f"OWN-{mapping_index + 1:02d}-{rank:02d}"
                 comp_id = f"COMP-{mapping_index + 1:02d}-{rank:02d}"
                 own_items.append(

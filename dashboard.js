@@ -15,16 +15,9 @@ function formatPrice(value) {
     return new Intl.NumberFormat("ko-KR").format(num) + "원";
 }
 
-function signedPrice(value) {
+function formatRate(value) {
     if (value === null || value === undefined || value === "") return "-";
-    const num = Number(value || 0);
-    const sign = num > 0 ? "+" : num < 0 ? "-" : "";
-    return `${sign}${formatPrice(Math.abs(num))}`;
-}
-
-function changeClass(value) {
-    const num = Number(value || 0);
-    return num > 0 ? "up" : num < 0 ? "down" : "flat";
+    return `${Number(value).toFixed(1)}%`;
 }
 
 function setMessage(text, type = "") {
@@ -48,6 +41,7 @@ async function init() {
     await loadConfig();
     await loadCategories();
     await loadLatest();
+    await loadLatestReport();
 }
 
 function bindEvents() {
@@ -94,7 +88,9 @@ async function loadTestData() {
         categories = payload.categories;
         selectedCategory = payload.result.category;
         selectedKeyword = "";
-        latestRows = payload.rows;
+        latestRows = payload.rows || [];
+        updateReportLink(payload.report);
+        renderSummary(payload.summary);
         renderCategorySelect();
         renderKeywords();
         renderLatest();
@@ -129,10 +125,7 @@ async function saveCategoryCooldown() {
     if (!selectedCategory) return;
     await api("/api/category_cooldown", {
         method: "POST",
-        body: JSON.stringify({
-            category: selectedCategory,
-            minutes: Number(qs("#categoryCooldownInput").value || 30),
-        }),
+        body: JSON.stringify({ category: selectedCategory, minutes: Number(qs("#categoryCooldownInput").value || 30) }),
     });
     setMessage(`${selectedCategory} 쿨다운을 저장했습니다.`, "ok");
     await loadConfig();
@@ -150,7 +143,7 @@ async function loadCategories() {
 function renderCategorySelect() {
     const select = qs("#categorySelect");
     select.innerHTML = Object.keys(categories)
-        .map((category) => `<option value="${escapeAttr(category)}">${category} (${categories[category].length})</option>`)
+        .map((category) => `<option value="${escapeAttr(category)}">${escapeHtml(category)} (${categories[category].length})</option>`)
         .join("");
     select.value = selectedCategory;
     updateCooldownDisplay();
@@ -181,7 +174,7 @@ function renderKeywords() {
                     <input type="checkbox" class="keyword-check" value="${escapeAttr(row.keyword)}" ${index < 10 ? "checked" : ""}>
                     <span class="keyword-text">
                         <strong>${escapeHtml(row.own_sku || row.keyword)}</strong>
-                        <small>${escapeHtml(row.competitor_sku || "-")}</small>
+                        <small>${escapeHtml(row.competitor_sku || "-")} · 기준가 ${formatPrice(row.base_price)}</small>
                     </span>
                 </label>
                 <span class="tag">${row.is_default === "Y" ? "기본" : "추가"}</span>
@@ -193,9 +186,6 @@ function renderKeywords() {
     container.querySelectorAll(".delete-keyword").forEach((button) => {
         button.addEventListener("click", () => deleteKeyword(button.dataset.keyword));
     });
-
-    qs("#pageTitle").textContent = selectedCategory ? `${selectedCategory} 가격 비교` : "가격 비교";
-    qs("#pageSubtitle").textContent = "당사 모델코드와 경쟁사 모델코드를 1:1로 비교합니다.";
 }
 
 function openSkuDialog() {
@@ -271,7 +261,9 @@ async function collectSelected() {
                 product_type: currentProductType(),
             }),
         });
-        latestRows = payload.rows;
+        latestRows = payload.rows || [];
+        updateReportLink(payload.report);
+        renderSummary(payload.summary);
         qs("#lastRun").textContent = `마지막 조회: ${new Date().toLocaleString("ko-KR")}`;
         setMessage("대시보드를 갱신했습니다.", "ok");
         renderLatest();
@@ -286,25 +278,60 @@ async function collectSelected() {
 async function loadLatest() {
     if (!selectedCategory) return;
     const payload = await api(`/api/latest?category=${encodeURIComponent(selectedCategory)}&product_type=${encodeURIComponent(currentProductType())}`);
-    latestRows = payload.rows;
+    latestRows = payload.rows || [];
+    renderSummary(payload.summary);
     renderLatest();
+}
+
+async function loadLatestReport() {
+    try {
+        const payload = await api("/api/report/latest");
+        updateReportLink(payload.report);
+    } catch (error) {
+        updateReportLink(null);
+    }
+}
+
+function updateReportLink(report) {
+    const link = qs("#latestReportLink");
+    if (!link) return;
+    const path = report?.path || "";
+    if (!path) {
+        link.textContent = "생성 전";
+        link.href = "#";
+        link.setAttribute("aria-disabled", "true");
+        return;
+    }
+    const webPath = "/" + path.replace(/\\/g, "/").replace(/^\/+/, "");
+    link.textContent = path;
+    link.href = webPath;
+    link.removeAttribute("aria-disabled");
+}
+
+function renderSummary(lines) {
+    const defaults = [
+        "기준가 대비 10% 이상 낮은 게시물만 표시합니다.",
+        "기준가 또는 경쟁사 가격이 없는 모델은 제외합니다.",
+        "상세 게시물은 URL 클릭 시 확인 가능합니다.",
+    ];
+    qs("#aiSummaryList").innerHTML = (lines && lines.length ? lines : defaults)
+        .slice(0, 3)
+        .map((line) => `<li>${escapeHtml(line)}</li>`)
+        .join("");
 }
 
 function renderLatest() {
     const tbody = qs("#latestTableBody");
     if (!latestRows.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty">표시할 데이터가 없습니다.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">기준가 대비 10% 이상 낮은 게시물이 없습니다.</td></tr>`;
         updateLatestDate();
         updateMetrics();
+        renderTopItems(null);
         return;
     }
 
     tbody.innerHTML = latestRows.map((row) => {
-        const ownAvg = row.own?.avg_price || 0;
-        const competitorAvg = row.competitor?.avg_price || 0;
-        const priceGap = competitorAvg && ownAvg ? competitorAvg - ownAvg : null;
-        const baseGap = ownAvg && row.base_price ? ownAvg - row.base_price : null;
-        const resultCount = `${row.own?.count || 0} / ${row.competitor?.count || 0}`;
+        const maxDiscount = maxDiscountRate(row.low_items || []);
         return `
             <tr data-keyword="${escapeAttr(row.keyword)}" class="${row.keyword === selectedKeyword ? "active" : ""}">
                 <td>
@@ -316,17 +343,13 @@ function renderLatest() {
                     </div>
                 </td>
                 <td class="price base-price">${formatPrice(row.base_price)}</td>
-                <td class="price price-stack">
-                    <strong>${formatPrice(ownAvg)}</strong>
-                    ${priceButton(row.own?.min_price, row.own?.min_url, "당사 최저가")}
+                <td class="price low-price-cell">
+                    ${lowestBlock("당사 최저가", row.own_lowest)}
+                    ${lowestBlock("경쟁사 최저가", row.competitor_lowest)}
                 </td>
-                <td class="price price-stack">
-                    <strong>${formatPrice(competitorAvg)}</strong>
-                    ${priceButton(row.competitor?.min_price, row.competitor?.min_url, "X사 최저가")}
-                </td>
-                <td class="${changeClass(priceGap)}">${signedPrice(priceGap)}</td>
-                <td class="${changeClass(baseGap)}">${signedPrice(baseGap)}</td>
-                <td>${resultCount}</td>
+                <td><strong>${Number(row.low_count || 0).toLocaleString("ko-KR")}건</strong></td>
+                <td class="down">${formatRate(maxDiscount)}</td>
+                <td>${topItemLink(row.low_items?.[0])}</td>
                 <td><button class="table-action download-data" data-keyword="${escapeAttr(row.keyword)}">CSV</button></td>
             </tr>
         `;
@@ -344,9 +367,34 @@ function renderLatest() {
 
     updateLatestDate();
     updateMetrics();
-    const firstWithData = latestRows.find((row) => (row.own?.count || 0) + (row.competitor?.count || 0) > 0);
+    const firstWithData = latestRows.find((row) => Number(row.low_count || 0) > 0);
     if (!selectedKeyword && firstWithData) selectKeyword(firstWithData.keyword);
-    renderTopItems(latestRows.find((row) => row.keyword === selectedKeyword));
+    renderTopItems(latestRows.find((row) => row.keyword === selectedKeyword) || firstWithData);
+}
+
+function lowestBlock(label, item) {
+    if (!item) {
+        return `<div class="lowest-block"><span>${label}: -</span></div>`;
+    }
+    const price = formatPrice(item.lprice || item.price);
+    const rate = item.discount_rate !== null && item.discount_rate !== undefined ? ` (${formatRate(item.discount_rate)})` : "";
+    const url = item.link || "";
+    const link = url
+        ? `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()">${escapeHtml(url)}</a>`
+        : `<span class="muted-inline">URL 없음</span>`;
+    return `<div class="lowest-block"><strong>${label}: ${price}${rate}</strong>${link}</div>`;
+}
+
+function topItemLink(item) {
+    if (!item) return "-";
+    if (!item.link) return formatPrice(item.lprice || item.price);
+    return `<a class="table-action" href="${escapeAttr(item.link)}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()">상세 URL</a>`;
+}
+
+function maxDiscountRate(items) {
+    const values = (items || []).map((item) => Number(item.discount_rate)).filter((value) => !Number.isNaN(value));
+    if (!values.length) return null;
+    return Math.min(...values);
 }
 
 function updateLatestDate() {
@@ -356,34 +404,19 @@ function updateLatestDate() {
         .map((value) => new Date(String(value).replace(" ", "T")))
         .filter((value) => !Number.isNaN(value.getTime()));
     if (!times.length) {
-        qs("#latestUpdatedAt").textContent = "기준가와 최신 평균가 중심 · 최신 업데이트: -";
+        qs("#latestUpdatedAt").textContent = "기준가 대비 10% 이상 낮은 게시물 기준 · 최신 업데이트: -";
         return;
     }
     const latest = new Date(Math.max(...times.map((value) => value.getTime())));
-    qs("#latestUpdatedAt").textContent = `기준가와 최신 평균가 중심 · 최신 업데이트: ${latest.toLocaleString("ko-KR")}`;
+    qs("#latestUpdatedAt").textContent = `기준가 대비 10% 이상 낮은 게시물 기준 · 최신 업데이트: ${latest.toLocaleString("ko-KR")}`;
 }
 
 function updateMetrics() {
-    const activeRows = latestRows.filter((row) => (row.own?.count || 0) || (row.competitor?.count || 0));
     qs("#metricKeywords").textContent = String(latestRows.length);
+    qs("#metricLowCount").textContent = `${latestRows.reduce((sum, row) => sum + Number(row.low_count || 0), 0).toLocaleString("ko-KR")}건`;
+    const maxRate = maxDiscountRate(latestRows.flatMap((row) => row.low_items || []));
+    qs("#metricMaxDiscount").textContent = formatRate(maxRate);
     updateCooldownDisplay();
-    if (!activeRows.length) {
-        qs("#metricCategoryMin").textContent = "-";
-        qs("#metricCategoryMax").textContent = "-";
-        return;
-    }
-
-    const ownMins = activeRows.map((row) => Number(row.own?.min_price || 0)).filter(Boolean);
-    const competitorMins = activeRows.map((row) => Number(row.competitor?.min_price || 0)).filter(Boolean);
-    qs("#metricCategoryMin").textContent = ownMins.length ? formatPrice(Math.min(...ownMins)) : "-";
-    qs("#metricCategoryMax").textContent = competitorMins.length ? formatPrice(Math.min(...competitorMins)) : "-";
-}
-
-function priceButton(price, url, label) {
-    if (!price) return `<span class="min-link disabled">${label}: -</span>`;
-    const text = `${label}: ${formatPrice(price)}`;
-    if (!url) return `<span class="min-link disabled">${escapeHtml(text)}</span>`;
-    return `<a class="min-link" href="${escapeAttr(url)}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()">${escapeHtml(text)}</a>`;
 }
 
 async function selectKeyword(keyword) {
@@ -515,32 +548,34 @@ function renderLegend() {
 
 function renderTopItems(row) {
     const container = qs("#topItems");
-    if (!row || !row.items || !row.items.length) {
-        container.innerHTML = `<div class="empty">최신 상품 데이터가 없습니다.</div>`;
+    const items = row?.low_items || [];
+    if (!items.length) {
+        container.innerHTML = `<div class="empty">기준가 대비 10% 이상 낮은 게시물이 없습니다.</div>`;
         return;
     }
 
-    container.innerHTML = row.items.slice(0, 20).map((item) => `
+    container.innerHTML = items.slice(0, 20).map((item, index) => `
         <div class="item">
-            <a class="item-title" href="${escapeAttr(item.link)}" target="_blank" rel="noreferrer">${item.side === "competitor" ? "경쟁사" : "당사"} ${item.rank}. ${escapeHtml(item.title)}</a>
-            <div class="item-meta">${escapeHtml(item.mall_name || "-")} · ${formatPrice(item.lprice || item.price)} · 모델코드 ${escapeHtml(item.sku || "-")} · ID ${escapeHtml(item.product_id || item.item_id)}</div>
+            ${item.link ? `<a class="item-title" href="${escapeAttr(item.link)}" target="_blank" rel="noreferrer">${index + 1}. ${escapeHtml(item.title)}</a>` : `<div class="item-title">${index + 1}. ${escapeHtml(item.title)}</div>`}
+            <div class="item-meta">${item.side === "competitor" ? "경쟁사" : "당사"} · ${escapeHtml(item.mall_name || "-")} · ${formatPrice(item.lprice || item.price)} · ${formatRate(item.discount_rate)} · 모델코드 ${escapeHtml(item.sku || "-")}</div>
         </div>
     `).join("");
 }
 
 function downloadLatestCsv(keyword) {
     const row = latestRows.find((item) => item.keyword === keyword);
-    if (!row || !row.items || !row.items.length) {
-        setMessage("다운로드할 최신 데이터가 없습니다.", "error");
+    const items = row?.low_items || [];
+    if (!items.length) {
+        setMessage("다운로드할 저가 게시물 데이터가 없습니다.", "error");
         return;
     }
 
     const columns = [
         "snapshot_time", "category", "keyword", "side", "sku", "rank", "item_id", "product_id", "product_type",
-        "title", "mall_name", "lprice", "hprice", "price", "link", "brand", "maker", "search_total", "raw_json",
+        "title", "mall_name", "lprice", "discount_rate", "link", "brand", "maker", "search_total", "raw_json",
     ];
     const rows = [columns.join(",")];
-    row.items.forEach((item) => {
+    items.forEach((item) => {
         rows.push(columns.map((column) => csvCell(item[column])).join(","));
     });
 
@@ -548,12 +583,12 @@ function downloadLatestCsv(keyword) {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8-sig" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${safeFileName(row.category)}_${safeFileName(row.own_sku)}_${safeFileName(row.competitor_sku)}_${safeFileName(row.snapshot_time || "latest")}.csv`;
+    link.download = `${safeFileName(row.category)}_${safeFileName(row.own_sku)}_${safeFileName(row.competitor_sku)}_low_top20.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(link.href);
-    setMessage("최신 데이터를 CSV로 저장했습니다.", "ok");
+    setMessage("저가 게시물 TOP20 데이터를 CSV로 저장했습니다.", "ok");
 }
 
 function csvCell(value) {
@@ -565,18 +600,9 @@ function safeFileName(value) {
     return String(value ?? "").replace(/[<>:"/\\|?*\s]+/g, "_").replace(/^_+|_+$/g, "") || "data";
 }
 
-function lineKey(line) {
-    return String(line.product_id || line.item_id || line.title || "");
-}
-
 function shortTime(value) {
     if (!value) return "";
     return String(value).replace(/^\d{4}-/, "").replace(":00", "");
-}
-
-function shortDateTime(value) {
-    if (!value) return "";
-    return String(value).replace(/^\d{4}-/, "");
 }
 
 function escapeAttr(value) {

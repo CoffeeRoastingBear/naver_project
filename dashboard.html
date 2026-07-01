@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>가격 비교 대시보드</title>
+    <title>TV 가격 비교 AI 요약</title>
     <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
@@ -61,30 +61,38 @@
 
             <button class="primary" id="collectBtn">선택 모델 조회</button>
             <div id="lastRun" class="small-text">마지막 조회: -</div>
+            <div class="report-link">
+                <span>HTML 리포트</span>
+                <a id="latestReportLink" href="#" target="_blank" rel="noreferrer" aria-disabled="true">생성 전</a>
+            </div>
         </section>
     </aside>
 
     <main class="main">
-        <header class="topbar">
+        <header class="topbar ai-banner">
             <div>
-                <h2 id="pageTitle">가격 비교</h2>
-                <p id="pageSubtitle">당사 모델코드와 경쟁사 모델코드를 1:1로 비교합니다.</p>
+                <h2 id="pageTitle">TV 가격 비교 * AI 요약</h2>
+                <ol id="aiSummaryList" class="ai-summary-list">
+                    <li>기준가 대비 10% 이상 낮은 게시물만 표시합니다.</li>
+                    <li>기준가 또는 경쟁사 가격이 없는 모델은 제외합니다.</li>
+                    <li>상세 게시물은 URL 클릭 시 확인 가능합니다.</li>
+                </ol>
             </div>
             <div id="message" class="message"></div>
         </header>
 
         <section class="summary-grid">
             <div class="metric">
-                <span>모델코드</span>
+                <span>표시 모델</span>
                 <strong id="metricKeywords">0</strong>
             </div>
             <div class="metric">
-                <span>당사 최저가</span>
-                <strong id="metricCategoryMin">-</strong>
+                <span>저가 게시물 수</span>
+                <strong id="metricLowCount">0건</strong>
             </div>
             <div class="metric">
-                <span>경쟁사 최저가</span>
-                <strong id="metricCategoryMax">-</strong>
+                <span>최대 할인율</span>
+                <strong id="metricMaxDiscount">-</strong>
             </div>
             <div class="metric">
                 <span>캐시/쿨다운</span>
@@ -95,7 +103,7 @@
         <section class="content-card">
             <div class="section-header">
                 <h3>최신 가격 비교</h3>
-                <span id="latestUpdatedAt">기준가와 최신 평균가 중심 · 최신 업데이트: -</span>
+                <span id="latestUpdatedAt">기준가 대비 10% 이상 낮은 게시물 기준 · 최신 업데이트: -</span>
             </div>
             <div class="table-wrap">
                 <table>
@@ -103,11 +111,10 @@
                         <tr>
                             <th>모델코드</th>
                             <th>기준가</th>
-                            <th>당사 평균/최저</th>
-                            <th>X사 평균/최저</th>
-                            <th>경쟁사 대비</th>
-                            <th>기준가 대비</th>
-                            <th>결과 수</th>
+                            <th>최저가 게시물</th>
+                            <th>저가 게시물 수</th>
+                            <th>최대 할인율</th>
+                            <th>TOP20</th>
                             <th>CSV</th>
                         </tr>
                     </thead>
@@ -140,8 +147,8 @@
             </div>
             <div>
                 <div class="section-header">
-                    <h3>최신 상품 Top 20</h3>
-                    <span>당사/경쟁사 통합</span>
+                    <h3>저가 게시물 TOP20</h3>
+                    <span>가격 오름차순 / 할인율 내림차순</span>
                 </div>
                 <div id="topItems" class="item-list"></div>
             </div>
@@ -184,15 +191,15 @@
             <p>하나의 당사 모델코드와 하나의 경쟁사 모델코드를 1:1로 등록합니다.</p>
             <label>
                 당사 모델코드
-                <input id="ownSkuInput" type="text" autocomplete="off" placeholder="예: KQ85QD80AFXKR">
+                <input id="ownSkuInput" type="text" autocomplete="off" placeholder="예: KQ85QNF80AFXKR">
             </label>
             <label>
                 경쟁사 모델코드
-                <input id="competitorSkuInput" type="text" autocomplete="off" placeholder="예: OLED85C5KNA">
+                <input id="competitorSkuInput" type="text" autocomplete="off" placeholder="예: 86QNED80">
             </label>
             <label>
                 당사 모델 기준가
-                <input id="basePriceInput" type="number" min="0" step="1000" placeholder="예: 4590000">
+                <input id="basePriceInput" type="number" min="0" step="1000" placeholder="예: 3720790">
             </label>
             <div class="dialog-actions">
                 <button value="cancel" class="secondary">취소</button>

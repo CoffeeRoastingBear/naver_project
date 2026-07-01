@@ -1,0 +1,23 @@
+name: Test Mail
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send-test-mail:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Send test mail
+        env:
+          GMAIL_ID: ${{ secrets.GMAIL_ID }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python test_mail.py

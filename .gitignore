@@ -3,6 +3,7 @@ config.json
 
 # Runtime data
 data/
+reports/
 *.t1
 !keyword_master.t1
 

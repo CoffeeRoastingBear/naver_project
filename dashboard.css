@@ -267,6 +267,30 @@ select {
     margin-top: 10px;
 }
 
+.report-link {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #dde5ee;
+    font-size: 12px;
+}
+
+.report-link span {
+    color: #667085;
+}
+
+.report-link a {
+    color: #175cd3;
+    word-break: break-all;
+}
+
+.report-link a[aria-disabled="true"] {
+    color: #98a2b3;
+    pointer-events: none;
+    text-decoration: none;
+}
+
 .full {
     width: 100%;
     margin-top: 10px;
@@ -294,6 +318,14 @@ select {
     margin-bottom: 18px;
 }
 
+.ai-banner {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+}
+
 .topbar h2 {
     margin: 0;
     font-size: 30px;
@@ -302,6 +334,14 @@ select {
 .topbar p {
     margin: 6px 0 0;
     color: var(--muted);
+}
+
+.ai-summary-list {
+    margin: 10px 0 0;
+    padding-left: 20px;
+    color: var(--text);
+    line-height: 1.55;
+    font-size: 14px;
 }
 
 .message {
@@ -383,7 +423,7 @@ select {
 table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 1080px;
+    min-width: 1120px;
 }
 
 th,
@@ -479,6 +519,39 @@ tbody tr.active {
 .min-link.disabled {
     color: var(--muted);
     cursor: default;
+}
+
+.low-price-cell {
+    min-width: 300px;
+}
+
+.lowest-block {
+    display: grid;
+    gap: 3px;
+    padding: 4px 0;
+}
+
+.lowest-block + .lowest-block {
+    border-top: 1px solid var(--line);
+    margin-top: 6px;
+    padding-top: 8px;
+}
+
+.lowest-block a {
+    color: var(--blue);
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.lowest-block a:hover {
+    text-decoration: underline;
+}
+
+.muted-inline {
+    color: var(--muted);
+    font-size: 11px;
 }
 
 .up {
