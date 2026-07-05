@@ -2,9 +2,9 @@ name: Test Mail
 
 on:
   workflow_dispatch:
-  schedule:
+ # schedule:
     # 09:00 KST daily
-    - cron: "7 0 * * *"
+#    - cron: "7 0 * * *"
 
 jobs:
   send-test-mail:
